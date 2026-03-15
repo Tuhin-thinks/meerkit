@@ -21,6 +21,11 @@ const instagramUserForm = ref({
 
 const selectedInstagramUser = ref<InstagramUserRecord | null>(null);
 const activeAccountMessage = ref("");
+const accountUpdateForm = ref({
+    display_name: "",
+    cookie_string: "",
+});
+const accountUpdateMessage = ref("");
 
 const { data: meData, isLoading: meLoading } = useQuery({
     queryKey: ["me"],
@@ -93,6 +98,30 @@ const { mutate: switchInstagramUser, isPending: switchPending } = useMutation({
     },
 });
 
+const {
+    mutate: saveInstagramUserEdits,
+    isPending: saveInstagramUserEditsPending,
+    error: saveInstagramUserEditsError,
+} = useMutation({
+    mutationFn: (payload: {
+        instagramUserId: string;
+        display_name?: string;
+        cookie_string?: string;
+    }) =>
+        api.updateInstagramUser(payload.instagramUserId, {
+            display_name: payload.display_name,
+            cookie_string: payload.cookie_string,
+        }),
+    onSuccess: (payload) => {
+        queryClient.setQueryData(["me"], payload.me);
+        selectedInstagramUser.value = payload.instagram_user;
+        accountUpdateForm.value.display_name = payload.instagram_user.name;
+        accountUpdateForm.value.cookie_string = "";
+        accountUpdateMessage.value = payload.message;
+        queryClient.invalidateQueries();
+    },
+});
+
 const { mutate: removeInstagramUser, isPending: removePending } = useMutation({
     mutationFn: (instagramUserId: string) => api.deleteInstagramUser(instagramUserId),
     onSuccess: (payload) => {
@@ -138,6 +167,38 @@ watch(
 
 watch(currentView, () => {
     activeAccountMessage.value = "";
+    accountUpdateMessage.value = "";
+});
+
+interface CookiePreview {
+    sessionid: string | null;
+    ds_user_id: string | null;
+    csrftoken: string | null;
+}
+
+function parseCookieString(raw: string): CookiePreview {
+    const result: CookiePreview = { sessionid: null, ds_user_id: null, csrftoken: null };
+    let source = raw.trim();
+    if (source.toLowerCase().startsWith("cookie:")) {
+        source = source.slice(source.indexOf(":") + 1).trim();
+    }
+    for (const chunk of source.split(";")) {
+        const piece = chunk.trim();
+        if (!piece || !piece.includes("=")) continue;
+        const eqIdx = piece.indexOf("=");
+        const key = piece.slice(0, eqIdx).trim();
+        const value = piece.slice(eqIdx + 1).trim();
+        if (key === "sessionid") result.sessionid = value || null;
+        if (key === "ds_user_id") result.ds_user_id = value || null;
+        if (key === "csrftoken") result.csrftoken = value || null;
+    }
+    return result;
+}
+
+const parsedCookiePreview = computed<CookiePreview | null>(() => {
+    const raw = accountUpdateForm.value.cookie_string.trim();
+    if (!raw) return null;
+    return parseCookieString(raw);
 });
 
 function parseIsoTime(value?: string | null): number | null {
@@ -163,7 +224,32 @@ const isLoggedIn = computed(() => !!meData.value?.app_user_id);
 
 async function openDetails(instagramUserId: string) {
     selectedInstagramUser.value = await api.getInstagramUser(instagramUserId);
+    if (selectedInstagramUser.value) {
+        accountUpdateForm.value.display_name = selectedInstagramUser.value.name;
+        accountUpdateForm.value.cookie_string = "";
+    }
+    accountUpdateMessage.value = "";
     currentView.value = "details";
+}
+
+function submitInstagramUserEdits() {
+    if (!selectedInstagramUser.value) {
+        return;
+    }
+
+    const displayName = accountUpdateForm.value.display_name.trim();
+    const cookieString = accountUpdateForm.value.cookie_string.trim();
+
+    if (!displayName && !cookieString) {
+        accountUpdateMessage.value = "Enter a display name or paste a cookie string first.";
+        return;
+    }
+
+    saveInstagramUserEdits({
+        instagramUserId: selectedInstagramUser.value.instagram_user_id,
+        display_name: displayName || undefined,
+        cookie_string: cookieString || undefined,
+    });
 }
 </script>
 
@@ -450,6 +536,69 @@ async function openDetails(instagramUserId: string) {
                             Credential warning: one or more credentials are older than 1 day.
                         </p>
                     </div>
+
+                    <form
+                        class="mt-6 space-y-3 border border-gray-200 rounded-xl p-4"
+                        @submit.prevent="submitInstagramUserEdits()"
+                    >
+                        <h3 class="text-sm font-semibold text-gray-800">Update Account Details</h3>
+                        <input
+                            v-model="accountUpdateForm.display_name"
+                            placeholder="Display name"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                        <textarea
+                            v-model="accountUpdateForm.cookie_string"
+                            placeholder="Paste cookie string here (must include sessionid and ds_user_id)"
+                            rows="4"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                        />
+                        <div
+                            v-if="parsedCookiePreview"
+                            class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs"
+                        >
+                            <p class="font-semibold text-gray-700 mb-1.5">Cookie preview</p>
+                            <div class="grid gap-1">
+                                <div class="flex items-start gap-2">
+                                    <span class="w-24 shrink-0 text-gray-500">sessionid</span>
+                                    <span
+                                        :class="parsedCookiePreview.sessionid ? 'text-gray-900 break-all' : 'text-rose-500 italic'"
+                                    >{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
+                                </div>
+                                <div class="flex items-start gap-2">
+                                    <span class="w-24 shrink-0 text-gray-500">ds_user_id</span>
+                                    <span
+                                        :class="parsedCookiePreview.ds_user_id ? 'text-gray-900 break-all' : 'text-rose-500 italic'"
+                                    >{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
+                                </div>
+                                <div class="flex items-start gap-2">
+                                    <span class="w-24 shrink-0 text-gray-500">csrftoken</span>
+                                    <span
+                                        :class="parsedCookiePreview.csrftoken ? 'text-gray-900 break-all' : 'text-amber-600 italic'"
+                                    >{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
+                                </div>
+                                <p
+                                    v-if="!parsedCookiePreview.sessionid || !parsedCookiePreview.ds_user_id"
+                                    class="mt-1 text-rose-600"
+                                >
+                                    Required fields missing — fix the cookie and try again.
+                                </p>
+                                <p v-else class="mt-1 text-emerald-700">Required fields found ✓</p>
+                            </div>
+                        </div>
+                        <button
+                            :disabled="saveInstagramUserEditsPending"
+                            class="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-black disabled:opacity-50"
+                        >
+                            {{ saveInstagramUserEditsPending ? "Saving updates…" : "Save Updates" }}
+                        </button>
+                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-700">
+                            {{ accountUpdateMessage }}
+                        </p>
+                        <p v-if="saveInstagramUserEditsError" class="text-sm text-rose-600">
+                            Could not update account details. Check cookie content and try again.
+                        </p>
+                    </form>
 
                     <div class="mt-6 flex gap-2">
                         <button

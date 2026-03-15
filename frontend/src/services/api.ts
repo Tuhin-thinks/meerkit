@@ -51,6 +51,17 @@ export const listInstagramUsers = () =>
 export const getInstagramUser = (instagramUserId: string) =>
   http.get<InstagramUserRecord>(`/auth/instagram-users/${instagramUserId}`).then((r) => r.data)
 
+export const updateInstagramUser = (
+  instagramUserId: string,
+  payload: { display_name?: string; cookie_string?: string },
+) =>
+  http
+    .patch<{ instagram_user: InstagramUserRecord; me: MeResponse; message: string }>(
+      `/auth/instagram-users/${instagramUserId}`,
+      payload,
+    )
+    .then((r) => r.data)
+
 export const selectInstagramUser = (instagramUserId: string) =>
   http.post<{ active_instagram_user: InstagramUserRecord; message: string; me: MeResponse }>(`/auth/instagram-users/${instagramUserId}/select`).then((r) => r.data)
 
