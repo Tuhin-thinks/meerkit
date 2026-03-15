@@ -122,6 +122,25 @@ def _safe_fetch_instagram_username(
     return None
 
 
+def _parse_cookie_string(cookie_string: str) -> dict[str, str]:
+    """Parse a pasted cookie header string into key/value pairs."""
+    raw = cookie_string.strip()
+    if raw.lower().startswith("cookie:"):
+        raw = raw.split(":", 1)[1].strip()
+
+    cookies: dict[str, str] = {}
+    for chunk in raw.split(";"):
+        piece = chunk.strip()
+        if not piece or "=" not in piece:
+            continue
+        key, value = piece.split("=", 1)
+        normalized_key = key.strip()
+        if not normalized_key:
+            continue
+        cookies[normalized_key] = value.strip()
+    return cookies
+
+
 def add_instagram_user(
     app_user_id: str,
     name: str,
@@ -163,6 +182,80 @@ def add_instagram_user(
         _write_json(_state_file(app_user_id), state)
 
     return instagram_user
+
+
+def update_instagram_user(
+    app_user_id: str,
+    instagram_user_id: str,
+    display_name: str | None = None,
+    cookie_string: str | None = None,
+) -> dict | None:
+    """Update instagram user display name and/or credentials from a cookie string."""
+    instagram_users = get_instagram_users(app_user_id)
+    target_index = next(
+        (
+            idx
+            for idx, user in enumerate(instagram_users)
+            if user.get("instagram_user_id") == instagram_user_id
+        ),
+        None,
+    )
+    if target_index is None:
+        return None
+
+    target_user = dict(instagram_users[target_index])
+    now_iso = datetime.now().isoformat()
+    touched_credentials = False
+
+    if display_name is not None:
+        normalized_display_name = display_name.strip()
+        if not normalized_display_name:
+            raise ValueError("display_name cannot be empty")
+        target_user["name"] = normalized_display_name
+
+    if cookie_string is not None:
+        parsed = _parse_cookie_string(cookie_string)
+        parsed_session_id = (parsed.get("sessionid") or "").strip()
+        parsed_user_id = (
+            parsed.get("ds_user_id")
+            or parsed.get("user_id")
+            or parsed.get("userid")
+            or ""
+        ).strip()
+        parsed_csrf = (parsed.get("csrftoken") or "").strip()
+
+        if not parsed_session_id or not parsed_user_id:
+            raise ValueError("cookie string must include sessionid and ds_user_id")
+
+        target_user["session_id"] = parsed_session_id
+        target_user["user_id"] = parsed_user_id
+        target_user["session_id_added_at"] = now_iso
+        touched_credentials = True
+
+        if parsed_csrf:
+            target_user["csrf_token"] = parsed_csrf
+            target_user["csrf_token_added_at"] = now_iso
+
+        refreshed_username = _safe_fetch_instagram_username(
+            csrf_token=target_user.get("csrf_token", ""),
+            session_id=target_user["session_id"],
+            user_id=target_user["user_id"],
+        )
+        if not refreshed_username:
+            raise ValueError(
+                "cookie refresh failed; verify cookie values (sessionid, ds_user_id, csrftoken)"
+            )
+
+        target_user["username"] = refreshed_username
+        if display_name is None:
+            target_user["name"] = refreshed_username
+
+    if not touched_credentials and display_name is None:
+        raise ValueError("nothing to update")
+
+    instagram_users[target_index] = target_user
+    _write_json(_instagram_users_file(app_user_id), instagram_users)
+    return target_user
 
 
 def get_instagram_user(app_user_id: str, instagram_user_id: str) -> dict | None:

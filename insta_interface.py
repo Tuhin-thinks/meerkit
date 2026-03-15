@@ -1,10 +1,11 @@
 import csv
 import json
 import pprint
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import requests
 import tqdm
@@ -27,7 +28,7 @@ class InstagramProfile:
 def _headers(profile: InstagramProfile) -> dict[str, str]:
     """Build request headers for a profile-scoped Instagram request."""
     return {
-        "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+        # "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
         "x-csrftoken": profile.csrf_token,
         "x-ig-app-id": "936619743392459",
     }
@@ -341,12 +342,14 @@ def get_user_data(
 class FollowerUserRecord:
     pk_id: str
     id: str
-    fbid_v2: str
-    profile_pic_id: str
     profile_pic_url: str
     username: str
     full_name: str
     is_private: bool
+    # optional fields
+    fbid_v2: str | None
+    profile_pic_id: str | None
+    is_verified: bool | None = None
 
     @staticmethod
     def from_string(record_str: str) -> "FollowerUserRecord":
@@ -364,6 +367,65 @@ class FollowerUserRecord:
     def __str__(self) -> str:
         return json.dumps(self.__dict__)
 
+def get_current_followers_v2(
+    profile: InstagramProfile,
+    store_data: bool = True,
+    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+):
+    """V2 of get_current_followers with different approach"""
+    _max_fetch_count = 24
+    follower_user_data_list: list[FollowerUserRecord] = []
+
+    with requests.Session() as session:
+        query_hash = "c76146de99bb02f6415203be841dd25a"
+        session.headers.update(_headers(profile))
+        session.cookies.update(_cookies(profile))
+
+        _after = None
+
+        has_next = True
+
+        while has_next:
+            variables = {
+                "id": profile.user_id,
+                "include_reel": False,
+                "fetch_mutual": False,
+                "first": 50,
+                "after": _after,
+            }
+            _url = f"{url}?query_hash={query_hash}&variables={quote(json.dumps(variables))}"
+            response = session.get(_url)
+            if not response.ok:
+                print(
+                    f"Error fetching followers: {response.status_code} - {response.text}"
+                )
+                break
+
+            data = response.json()
+            edge = data["data"]["user"]["edge_followed_by"]
+
+            for item in edge["edges"]:
+                node = item["node"]
+                follower_record = FollowerUserRecord(
+                    pk_id=node.get("id", ""),
+                    id=node.get("id", ""),
+                    fbid_v2=node.get("fbid_v2", None),
+                    profile_pic_id=node.get("profile_pic_id", None),
+                    profile_pic_url=node.get("profile_pic_url", None),
+                    username=node.get("username", None),
+                    full_name=node.get("full_name", None),
+                    is_private=node.get("is_private", False),
+                )
+                follower_user_data_list.append(follower_record)
+
+            _after = edge.get("page_info", {}).get("end_cursor")
+            has_next = edge.get("page_info", {}).get("has_next_page", False)
+            print(f"Fetched batch of followers, count: {len(edge['edges'])}")
+
+    if store_data and _store_fn:
+        _store_fn(follower_user_data_list)
+    print(f"Total followers fetched: {len(follower_user_data_list)}")
+    return follower_user_data_list
 
 def get_current_followers(
     profile: InstagramProfile,
@@ -373,14 +435,18 @@ def get_current_followers(
     """Get the set of current followers"""
 
     __user_data = get_user_data(profile)
-    print("Fetched user data for followers retrieval:", __user_data)
-    followers_count = __user_data.get("account_followers_count")
+    followers_count = __user_data["account_followers_count"]
+    username = __user_data["username"]
+    print(f"[i] Followers count for {username}: {followers_count}")
     assert isinstance(followers_count, int), "Invalid followers count in user data"
     _max_fetch_count = 24
     follower_user_data_list: list[FollowerUserRecord] = []
 
     with requests.Session() as session:
-        session.headers.update(_headers(profile))
+        session.headers.update(
+            _headers(profile)
+            | {"referer": f"https://www.instagram.com/{username}/followers/"}
+        )
         session.cookies.update(_cookies(profile))
 
         _query_params: dict[str, int | str] = {
@@ -402,6 +468,9 @@ def get_current_followers(
             try:
                 response = session.get(url, params=_query_params)
                 followers_count_data = response.json()
+                if followers_count_data.get("status") == "fail":
+                    print(f"Error in response: {followers_count_data.get('message')}")
+                    break
             except (requests.RequestException, ValueError) as e:
                 print(f"Error fetching followers: {e}")
                 break
@@ -410,26 +479,30 @@ def get_current_followers(
                 break
 
             _max_id = followers_count_data.get("next_max_id")
+            pprint.pprint(followers_count_data)
             users_data = followers_count_data.get("users", [])
+            print("[i] Fetched batch of followers, count:", len(users_data))
 
             for user_data in users_data:
                 follower_record = FollowerUserRecord(
                     pk_id=user_data.get("pk", ""),
                     id=user_data.get("id", ""),
-                    fbid_v2=user_data.get("fbid_v2", ""),
-                    profile_pic_id=user_data.get("profile_pic_id", ""),
-                    profile_pic_url=user_data.get("profile_pic_url", ""),
-                    username=user_data.get("username", ""),
-                    full_name=user_data.get("full_name", ""),
+                    fbid_v2=user_data.get("fbid_v2", None),
+                    profile_pic_id=user_data.get("profile_pic_id", None),
+                    profile_pic_url=user_data.get("profile_pic_url", None),
+                    username=user_data.get("username", None),
+                    full_name=user_data.get("full_name", None),
                     is_private=user_data.get("is_private", False),
                 )
                 follower_user_data_list.append(follower_record)
             followers_count -= _max_fetch_count
             _progress.update(1)
+            # delay
+            time.sleep(0.3)
 
     if store_data and _store_fn:
         _store_fn(follower_user_data_list)
-
+    print(f"Total followers fetched: {len(follower_user_data_list)}")
     return follower_user_data_list
 
 

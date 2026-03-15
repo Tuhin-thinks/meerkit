@@ -126,6 +126,45 @@ def get_instagram_user(instagram_user_id: str):
     return jsonify(instagram_user)
 
 
+@bp.patch("/instagram-users/<instagram_user_id>")
+def patch_instagram_user(instagram_user_id: str):
+    """Update instagram user display name and/or cookie-derived credentials."""
+    current = _current_app_user()
+    if not current:
+        return jsonify({"error": "Not logged in"}), 401
+    app_user_id, app_user_name = current
+
+    payload = request.get_json(silent=True) or {}
+    display_name = payload.get("display_name")
+    cookie_string = payload.get("cookie_string")
+
+    if display_name is not None and not isinstance(display_name, str):
+        return jsonify({"error": "display_name must be a string"}), 400
+    if cookie_string is not None and not isinstance(cookie_string, str):
+        return jsonify({"error": "cookie_string must be a string"}), 400
+
+    try:
+        instagram_user = auth.update_instagram_user(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            display_name=display_name,
+            cookie_string=cookie_string,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if not instagram_user:
+        return jsonify({"error": "Instagram user not found"}), 404
+
+    return jsonify(
+        {
+            "instagram_user": instagram_user,
+            "me": auth.build_me_payload(app_user_id, app_user_name),
+            "message": "Instagram account updated",
+        }
+    )
+
+
 @bp.post("/instagram-users/<instagram_user_id>/select")
 def select_instagram_user(instagram_user_id: str):
     """Set active instagram user for scan/history/image scoped operations."""

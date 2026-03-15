@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backend import scan_worker
+from backend.services import persistence
 
 _locks: dict[str, threading.Lock] = {}
 _states: dict[str, dict] = {}
@@ -28,10 +29,25 @@ def _ensure_state(key: str) -> dict:
     return _states[key]
 
 
-def get_status(app_user_id: str, profile_id: str) -> dict:
-    """Return scan status for one user/profile scope."""
+def get_status(app_user_id: str, profile_id: str, data_dir: Path | None = None) -> dict:
+    """Return scan status for one user/profile scope.
+
+    If the server has restarted and no scan has run in this process,
+    last_scan_at / last_scan_id are hydrated from the persisted scan index
+    so the dashboard never incorrectly shows 'Never'.
+    """
     key = _scope_key(app_user_id, profile_id)
-    return dict(_ensure_state(key))
+    state = _ensure_state(key)
+    if (
+        data_dir is not None
+        and state["last_scan_at"] is None
+        and state["status"] == "idle"
+    ):
+        meta = persistence.get_latest_scan_meta(data_dir)
+        if meta:
+            state["last_scan_at"] = meta.get("timestamp")
+            state["last_scan_id"] = meta.get("scan_id")
+    return dict(state)
 
 
 def _run_worker(data_dir: Path, credentials: dict, target_user_id: str) -> dict:

@@ -118,7 +118,8 @@ def run_scan_for_api(
         session_id=session_id,
         user_id=target_user_id,
     )
-    followers = ii.get_current_followers(profile=profile, store_data=False)
+    # followers = ii.get_current_followers(profile=profile, store_data=False)
+    followers = ii.get_current_followers_v2(profile=profile, store_data=False)
 
     # Persist new snapshot (same format as followers_data.txt for read_followers_from_file compat)
     snapshot_path = scans_dir / f"{scan_id}.jsonl"

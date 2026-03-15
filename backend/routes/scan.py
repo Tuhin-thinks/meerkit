@@ -56,8 +56,11 @@ def scan_status():
         body, status = context
         return jsonify(body), status
     instagram_user = context
+    data_dir = profile_data_dir(app_user_id, instagram_user["instagram_user_id"])
     return jsonify(
-        scan_runner.get_status(app_user_id, instagram_user["instagram_user_id"])
+        scan_runner.get_status(
+            app_user_id, instagram_user["instagram_user_id"], data_dir
+        )
     )
 
 
