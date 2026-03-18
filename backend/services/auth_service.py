@@ -159,7 +159,7 @@ def add_instagram_user(
         user_id=user_id,
     )
     now_iso = datetime.now().isoformat()
-    instagram_user_id = f"ig_{user_id}_{len(instagram_users) + 1}"
+    instagram_user_id = user_id
     instagram_user = {
         "instagram_user_id": instagram_user_id,
         "name": name.strip() or fetched_username or f"Instagram {user_id}",

@@ -39,6 +39,6 @@ def profile_scan_index_file(app_user_id: str, profile_id: str) -> Path:
     return profile_dir(app_user_id, profile_id) / "scan_index.jsonl"
 
 
-def app_user_db(app_user_id: str) -> Path:
+def app_user_db() -> Path:
     """Return the file path for the database of an app user."""
-    return user_dir(app_user_id) / "app_user_db.sqlite"
+    return DATA_DIR / "app_user_db.sqlite"

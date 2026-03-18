@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 
 import insta_interface as ii
+from backend.services.db_service import generate_scan_diff, store_scan_info
 
 
 def compare_followers(
@@ -83,7 +84,7 @@ def run_scan_for_api(
     data_dir: Path,
     csrf_token: str,
     session_id: str,
-    target_user_id: str,
+    reference_profile_id: str,
 ) -> dict:
     """
     Fetch current followers, persist a timestamped snapshot, compute a diff
@@ -102,67 +103,31 @@ def run_scan_for_api(
     # Load the previous snapshot before overwriting anything
     prev_followers = _load_latest_snapshot(data_dir)
 
-    # Fetch current followers without writing the legacy followers_data.txt
     profile = ii.InstagramProfile(
         csrf_token=csrf_token,
         session_id=session_id,
-        user_id=target_user_id,
+        user_id=reference_profile_id,
     )
     # followers = ii.get_current_followers(profile=profile, store_data=False)
     followers = ii.get_current_followers_v2(profile=profile, store_data=False)
 
-    # Persist new snapshot (same format as followers_data.txt for read_followers_from_file compat)
-    snapshot_path = scans_dir / f"{scan_id}.jsonl"
-    with open(snapshot_path, "w") as f:
-        f.write(f"Timestamp: {now}\n")
-        for follower in followers:
-            f.write(f"{follower}\n")
-
     add_to_downloader_queue(app_user_id, followers)
+    latest_scan_id = store_scan_info(
+        scan_id, reference_profile_id, app_user_id, followers
+    )
 
     # Compute and persist diff
-    diff_id: str | None = None
+    diff_id = generate_scan_diff(latest_scan_id, reference_profile_id, app_user_id)
+
+    # TODO: We may not need this in future.
     if prev_followers is not None:
         add_to_downloader_queue(app_user_id, prev_followers)
-        diff = compare_followers(prev_followers, followers)
-        diff_id = f"diff_{now.strftime('%Y%m%d_%H%M%S')}"
-        diff_path = diffs_dir / f"{diff_id}.json"
-        with open(diff_path, "w") as f:
-            json.dump(
-                {
-                    "diff_id": diff_id,
-                    "scan_id": scan_id,
-                    "timestamp": now.isoformat(),
-                    "new_followers": [
-                        json.loads(str(r)) for r in diff["new_followers"]
-                    ],
-                    "unfollowers": [json.loads(str(r)) for r in diff["unfollowers"]],
-                    "new_count": len(diff["new_followers"]),
-                    "unfollow_count": len(diff["unfollowers"]),
-                },
-                f,
-                indent=2,
-            )
-
-    # Append entry to scan index (one JSON line per scan)
-    index_path = data_dir / "scan_index.jsonl"
-    with open(index_path, "a") as f:
-        f.write(
-            json.dumps(
-                {
-                    "scan_id": scan_id,
-                    "timestamp": now.isoformat(),
-                    "follower_count": len(followers),
-                    "diff_id": diff_id,
-                }
-            )
-            + "\n"
-        )
 
     return {
         "scan_id": scan_id,
         "timestamp": now.isoformat(),
         "follower_count": len(followers),
+        "unfollower_count": len(prev_followers) if prev_followers else 0,
         "diff_id": diff_id,
     }
 

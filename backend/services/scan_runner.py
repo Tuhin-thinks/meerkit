@@ -29,7 +29,7 @@ def _ensure_state(key: str) -> dict:
     return _states[key]
 
 
-def get_status(app_user_id: str, profile_id: str, data_dir: Path | None = None) -> dict:
+def get_status(app_user_id: str, profile_id: str) -> dict:
     """Return scan status for one user/profile scope.
 
     If the server has restarted and no scan has run in this process,
@@ -38,12 +38,8 @@ def get_status(app_user_id: str, profile_id: str, data_dir: Path | None = None) 
     """
     key = _scope_key(app_user_id, profile_id)
     state = _ensure_state(key)
-    if (
-        data_dir is not None
-        and state["last_scan_at"] is None
-        and state["status"] == "idle"
-    ):
-        meta = persistence.get_latest_scan_meta(data_dir)
+    if state["last_scan_at"] is None and state["status"] == "idle":
+        meta = persistence.get_latest_scan_meta(profile_id)
         if meta:
             state["last_scan_at"] = meta.get("timestamp")
             state["last_scan_id"] = meta.get("scan_id")

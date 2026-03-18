@@ -16,7 +16,7 @@ def run_scoped_scan(
         data_dir=data_dir,
         csrf_token=csrf_token,
         session_id=session_id,
-        target_user_id=target_user_id,
+        reference_profile_id=target_user_id,
     )
 
 

@@ -28,9 +28,14 @@ def create_app() -> Flask:
     from backend.routes.scan import bp as scan_bp
     from backend.workers import download_worker
 
-    # # in debug mode, flask runs 2 processes. We only want to start the download worker in one of them to avoid duplicate workers.
-    # if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-    #     download_worker.start_download_worker()
+    is_debug = (
+        os.environ.get("FLASK_DEBUG") == "1"
+        or os.environ.get("FLASK_ENV") == "development"
+    )
+    # In debug/reload mode, Werkzeug starts a parent + child process.
+    # Start the worker only in the reloader child process.
+    if (is_debug and os.environ.get("WERKZEUG_RUN_MAIN") == "true") or (not is_debug):
+        download_worker.start_download_worker()
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(scan_bp)

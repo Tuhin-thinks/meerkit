@@ -1,8 +1,6 @@
 from flask import Blueprint, jsonify, request, session
 
-from backend.services import auth
-from backend.services.db_service import init_worker_db
-from backend.workers.download_worker import start_download_worker
+from backend.services import auth_service
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -16,6 +14,13 @@ def _current_app_user() -> tuple[str, str] | None:
     return app_user_id, app_user_name
 
 
+def _sync_active_instagram_user_session(app_user_id: str) -> str | None:
+    """Keep the browser session aligned with the persisted active instagram user."""
+    active_instagram_user_id = auth_service.get_active_instagram_user_id(app_user_id)
+    session["active_instagram_user_id"] = active_instagram_user_id
+    return active_instagram_user_id
+
+
 @bp.post("/register")
 def register():
     """Create a new app user account using name/password."""
@@ -26,7 +31,7 @@ def register():
         return jsonify({"error": "name and password are required"}), 400
 
     try:
-        user = auth.register_app_user(name, password)
+        user = auth_service.register_app_user(name, password)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
@@ -40,20 +45,14 @@ def login():
     name = (payload.get("name") or "").strip()
     password = (payload.get("password") or "").strip()
 
-    user = auth.login_app_user(name, password)
+    user = auth_service.login_app_user(name, password)
     if not user:
         return jsonify({"error": "Invalid credentials"}), 401
 
     session["app_user_id"] = user["app_user_id"]
     session["app_user_name"] = user["name"]
-
-    start_download_worker(user["app_user_id"])
-
-    session["download_worker_started"] = True
-
-    init_worker_db(user["app_user_id"])
-
-    return jsonify(auth.build_me_payload(user["app_user_id"], user["name"]))
+    _sync_active_instagram_user_session(user["app_user_id"])
+    return jsonify(auth_service.build_me_payload(user["app_user_id"], user["name"]))
 
 
 @bp.post("/logout")
@@ -61,7 +60,7 @@ def logout():
     """Clear app session for current browser."""
     app_user_id = session.get("app_user_id")
     if app_user_id:
-        auth.clear_user_session_payload(app_user_id)
+        auth_service.clear_user_session_payload(app_user_id)
     session.clear()
     return jsonify({"ok": True})
 
@@ -74,11 +73,9 @@ def me():
         return jsonify(None)
 
     app_user_id, app_user_name = current
-    if not session.get("download_worker_started"):
-        start_download_worker(app_user_id)
-        session["download_worker_started"] = True
+    _sync_active_instagram_user_session(app_user_id)
 
-    return jsonify(auth.build_me_payload(app_user_id, app_user_name))
+    return jsonify(auth_service.build_me_payload(app_user_id, app_user_name))
 
 
 @bp.get("/instagram-users")
@@ -88,7 +85,7 @@ def list_instagram_users():
     if not current:
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, _app_user_name = current
-    return jsonify(auth.get_instagram_users(app_user_id))
+    return jsonify(auth_service.get_instagram_users(app_user_id))
 
 
 @bp.post("/instagram-users")
@@ -106,7 +103,7 @@ def create_instagram_user():
     user_id = (payload.get("user_id") or "").strip()
 
     try:
-        instagram_user = auth.add_instagram_user(
+        instagram_user = auth_service.add_instagram_user(
             app_user_id=app_user_id,
             name=name,
             csrf_token=csrf_token,
@@ -116,23 +113,25 @@ def create_instagram_user():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 
+    _sync_active_instagram_user_session(app_user_id)
+
     return jsonify(
         {
             "instagram_user": instagram_user,
-            "me": auth.build_me_payload(app_user_id, app_user_name),
+            "me": auth_service.build_me_payload(app_user_id, app_user_name),
         }
     ), 201
 
 
 @bp.get("/instagram-users/<instagram_user_id>")
-def get_instagram_user(instagram_user_id: str):
+def get_instagram_user_detail(instagram_user_id: str):
     """Get one instagram user details for details page."""
     current = _current_app_user()
     if not current:
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, _app_user_name = current
 
-    instagram_user = auth.get_instagram_user(app_user_id, instagram_user_id)
+    instagram_user = auth_service.get_instagram_user(app_user_id, instagram_user_id)
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404
     return jsonify(instagram_user)
@@ -156,7 +155,7 @@ def patch_instagram_user(instagram_user_id: str):
         return jsonify({"error": "cookie_string must be a string"}), 400
 
     try:
-        instagram_user = auth.update_instagram_user(
+        instagram_user = auth_service.update_instagram_user(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             display_name=display_name,
@@ -171,7 +170,7 @@ def patch_instagram_user(instagram_user_id: str):
     return jsonify(
         {
             "instagram_user": instagram_user,
-            "me": auth.build_me_payload(app_user_id, app_user_name),
+            "me": auth_service.build_me_payload(app_user_id, app_user_name),
             "message": "Instagram account updated",
         }
     )
@@ -185,11 +184,13 @@ def select_instagram_user(instagram_user_id: str):
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, app_user_name = current
 
-    changed = auth.set_active_instagram_user(app_user_id, instagram_user_id)
+    changed = auth_service.set_active_instagram_user(app_user_id, instagram_user_id)
     if not changed:
         return jsonify({"error": "Instagram user not found"}), 404
 
-    instagram_user = auth.get_instagram_user(app_user_id, instagram_user_id)
+    _sync_active_instagram_user_session(app_user_id)
+
+    instagram_user = auth_service.get_instagram_user(app_user_id, instagram_user_id)
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404
 
@@ -197,7 +198,7 @@ def select_instagram_user(instagram_user_id: str):
         {
             "active_instagram_user": instagram_user,
             "message": f"Active account set to {instagram_user['name']}",
-            "me": auth.build_me_payload(app_user_id, app_user_name),
+            "me": auth_service.build_me_payload(app_user_id, app_user_name),
         }
     )
 
@@ -210,12 +211,14 @@ def delete_instagram_user(instagram_user_id: str):
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, app_user_name = current
 
-    deleted = auth.delete_instagram_user(app_user_id, instagram_user_id)
+    deleted = auth_service.delete_instagram_user(app_user_id, instagram_user_id)
     if not deleted:
         return jsonify({"error": "Instagram user not found"}), 404
 
+    _sync_active_instagram_user_session(app_user_id)
+
     return jsonify(
-        {"ok": True, "me": auth.build_me_payload(app_user_id, app_user_name)}
+        {"ok": True, "me": auth_service.build_me_payload(app_user_id, app_user_name)}
     )
 
 
@@ -227,7 +230,8 @@ def delete_all_instagram_users():
         return jsonify({"error": "Not logged in"}), 401
     app_user_id, app_user_name = current
 
-    auth.delete_all_instagram_users(app_user_id)
+    auth_service.delete_all_instagram_users(app_user_id)
+    _sync_active_instagram_user_session(app_user_id)
     return jsonify(
-        {"ok": True, "me": auth.build_me_payload(app_user_id, app_user_name)}
+        {"ok": True, "me": auth_service.build_me_payload(app_user_id, app_user_name)}
     )

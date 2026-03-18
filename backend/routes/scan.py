@@ -1,40 +1,25 @@
-from flask import Blueprint, jsonify, request, session
+from typing import cast
+
+from flask import Blueprint, jsonify, request
 
 from backend.config import profile_data_dir
-from backend.services import auth, persistence, scan_runner
+from backend.routes import get_active_context
+from backend.services import persistence, scan_runner
 
 bp = Blueprint("scan", __name__, url_prefix="/api")
 
 
-def _current_context() -> tuple[str, dict] | tuple[None, tuple[dict, int]]:
-    """Return logged-in app user + active instagram user, or an API error tuple."""
-    app_user_id = session.get("app_user_id")
-    if not app_user_id:
-        return None, ({"error": "Not logged in"}, 401)
-
+@bp.post("/scan")
+def trigger_scan():
     instagram_user_id = request.args.get("profile_id") or request.args.get(
         "instagram_user_id"
     )
-    if not instagram_user_id:
-        instagram_user_id = auth.get_active_instagram_user_id(app_user_id)
-    if not instagram_user_id:
-        return None, ({"error": "No active instagram user selected"}, 400)
-
-    instagram_user = auth.get_instagram_user(app_user_id, instagram_user_id)
-    if not instagram_user:
-        return None, ({"error": "Instagram user not found"}, 404)
-
-    return app_user_id, instagram_user
-
-
-@bp.post("/scan")
-def trigger_scan():
-    app_user_id, context = _current_context()
+    app_user_id, context = get_active_context(instagram_user_id)
     if not app_user_id:
         body, status = context
         return jsonify(body), status
 
-    instagram_user = context
+    instagram_user = cast(dict, context)
 
     data_dir = profile_data_dir(app_user_id, instagram_user["instagram_user_id"])
     started = scan_runner.start_scan(
@@ -51,33 +36,35 @@ def trigger_scan():
 
 @bp.get("/scan/status")
 def scan_status():
-    app_user_id, context = _current_context()
+    instagram_user_id = request.args.get("profile_id") or request.args.get(
+        "instagram_user_id"
+    )
+    app_user_id, context = get_active_context(instagram_user_id)
     if not app_user_id:
         body, status = context
         return jsonify(body), status
-    instagram_user = context
-    data_dir = profile_data_dir(app_user_id, instagram_user["instagram_user_id"])
+    instagram_user = cast(dict, context)
     return jsonify(
-        scan_runner.get_status(
-            app_user_id, instagram_user["instagram_user_id"], data_dir
-        )
+        scan_runner.get_status(app_user_id, instagram_user["instagram_user_id"])
     )
 
 
 @bp.get("/summary")
 def summary():
-    app_user_id, context = _current_context()
+    instagram_user_id = request.args.get("profile_id") or request.args.get(
+        "instagram_user_id"
+    )
+    app_user_id, context = get_active_context(instagram_user_id)
     if not app_user_id:
         body, status = context
         return jsonify(body), status
-    instagram_user = context
-    data_dir = profile_data_dir(app_user_id, instagram_user["instagram_user_id"])
-    meta = persistence.get_latest_scan_meta(data_dir)
+    instagram_user = cast(dict, context)
+    meta = persistence.get_latest_scan_meta(instagram_user["instagram_user_id"])
     if not meta:
         return jsonify(None)
     # Enrich with diff counts so the UI has a single call for header stats
     if meta.get("diff_id"):
-        diff = persistence.get_diff(data_dir, meta["diff_id"])
+        diff = persistence.get_diff(meta["diff_id"])
         if diff:
             meta = {
                 **meta,

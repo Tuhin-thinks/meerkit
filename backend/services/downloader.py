@@ -2,17 +2,14 @@ import requests
 
 from backend.config import IMAGE_CACHE_DIR
 from backend.extensions import image_download_queue
-from backend.services.db_service import cache_image_path
 
 
-def process_img_download(profile_pk_id: str, profile_pic_url: str) -> None:
+def process_img_download(profile_pk_id: str, profile_pic_url: str) -> str | None:
     """Downloads the profile image for a given pk_id and profile_pic_url, and caches it on disk."""
     img_path = IMAGE_CACHE_DIR / f"{profile_pk_id}.jpeg"
     if img_path.exists():
-        print(
-            f"[Download worker] Image already cached for pk_id {profile_pk_id} at {img_path}. Skipping download."
-        )
-        return
+        return str(img_path)
+
     response = requests.get(profile_pic_url, timeout=10)
     response.raise_for_status()
     # store in cache directory with filename as pk_id.jpg
@@ -28,7 +25,7 @@ def process_img_download(profile_pk_id: str, profile_pic_url: str) -> None:
         for chunk in response.iter_content(chunk_size=8192):
             f.write(chunk)
 
-    cache_image_path(profile_pk_id, profile_pic_url, str(img_path))
+    return str(img_path)
 
 
 def enqueue_image_download(

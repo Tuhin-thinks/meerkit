@@ -14,6 +14,7 @@ class SqliteDBHandler:
         :param db_path: points to app_user_db.sqlite for one app user.
         """
         self.db_path = db_path
+        self.conn: sqlite3.Connection | None = None
         self._initialize_db()
 
     def _initialize_db(self) -> None:
@@ -25,16 +26,18 @@ class SqliteDBHandler:
             conn.commit()
 
     def __enter__(self):
-        self.conn = sqlite3.connect(
-            self.db_path,
-            timeout=10.0,  # Wait up to 10 seconds if database is locked
-        )
-        self.conn.row_factory = sqlite3.Row
+        # Keep one connection per handler (and handler is thread-local in db_service).
+        if self.conn is None:
+            self.conn = sqlite3.connect(
+                self.db_path,
+                timeout=10.0,  # Wait up to 10 seconds if database is locked
+            )
+            self.conn.row_factory = sqlite3.Row
         return self.conn
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         _is_successful_close = True
-        if hasattr(self, "conn") and self.conn:
+        if self.conn:
             if exc_type:
                 print(
                     f"Exception occurred: {exc_type}, {exc_val}. Rolling back transaction."
@@ -43,9 +46,13 @@ class SqliteDBHandler:
                 # Rollback on error
                 self.conn.rollback()
                 _is_successful_close = False
-            else:
+            # else:
                 # Commit on success
-                self.conn.commit()
-            self.conn.close()
+            # self.conn.commit()
             return _is_successful_close
         return False  # Don't suppress exceptions
+
+    def close(self) -> None:
+        if self.conn:
+            self.conn.close()
+            self.conn = None
