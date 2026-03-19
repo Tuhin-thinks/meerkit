@@ -125,8 +125,8 @@ def _resolve_user_pk(username: str, profile: InstagramProfile) -> str | None:
     except (KeyError, ValueError, TypeError):
         return None
 
-
-already_unfollowed_users = load_unfollowed_users()
+# NOTE: not used in this project.
+# already_unfollowed_users = load_unfollowed_users()
 
 
 def unfollow_user(
@@ -166,9 +166,10 @@ def unfollow_user(
     print(response.json())
 
     if response.status_code == 200:
-        append_unfollowed_user(
-            user_id, username, f"https://www.instagram.com/{username}/"
-        )
+        # NOTE: Append to file for safe-keeping is not used in this project.
+        # append_unfollowed_user(
+        #     user_id, username, f"https://www.instagram.com/{username}/"
+        # )
         return 1
     else:
         print(f"Failed to unfollow {username}. Status code: {response.status_code}")
@@ -427,6 +428,8 @@ def get_current_followers_v2(
     print(f"Total followers fetched: {len(follower_user_data_list)}")
     return follower_user_data_list
 
+# NOTE: the above v2 approach is based on reverse engineering the Instagram web interface and faster than the v1 approach.
+# Both approaches work. But, I am currently using the v2 approach for fetching followers.
 def get_current_followers(
     profile: InstagramProfile,
     store_data: bool = True,
