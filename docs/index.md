@@ -60,14 +60,13 @@ cd frontend && npm install && cd ..
 
 ### 2. Configure
 
-Create `.env` with your Instagram session credentials:
+No `.env` file is required. If you want a custom Flask secret for local development, export it before starting the backend:
 
-```env
-CSRF_TOKEN=your_csrf_token
-SESSION_ID=your_sessionid
-USER_ID=your_numeric_user_id
-APP_SECRET_KEY=dev-secret
+```bash
+export APP_SECRET_KEY=dev-secret
 ```
+
+After logging in to the app, add your Instagram account from the UI using `session_id`, `csrf_token`, and `user_id`.
 
 ### 3. Run
 

@@ -34,16 +34,17 @@ cd ..
 
 ### Environment
 
-Create `.env`:
+No `.env` file is required for local development.
 
-```env
-CSRF_TOKEN=your_token
-SESSION_ID=your_session
-USER_ID=your_user_id
-APP_SECRET_KEY=dev-secret
-FLASK_DEBUG=1
-FLASK_ENV=development
+If you want a non-default Flask secret in your current shell, export it before starting the backend:
+
+```bash
+export APP_SECRET_KEY=dev-secret
+export FLASK_DEBUG=1
+export FLASK_ENV=development
 ```
+
+Instagram credentials are added through the authenticated app UI, not from environment variables.
 
 ## Running Locally
 

@@ -43,31 +43,27 @@ cd ..
 
 ### Step 4: Configure Environment
 
-Create a `.env` file in the project root:
+No `.env` file is required.
 
-```env
-# Instagram credentials (see instructions below)
-CSRF_TOKEN=your_csrf_token_here
-SESSION_ID=your_sessionid_here
-USER_ID=your_numeric_user_id
+If you want to override Flask's default development secret, export `APP_SECRET_KEY` before starting the backend:
 
-# Flask secret key (use any random string for development)
-APP_SECRET_KEY=dev-secret-key-change-in-production
+```bash
+export APP_SECRET_KEY=dev-secret-key-change-in-production
 ```
 
 #### Getting Instagram Credentials
 
-To obtain your Instagram session credentials:
+To obtain the credentials you will later paste into the app:
 
 1. Open Instagram in your browser and log in
 2. Open **Developer Tools** (F12 or right-click → Inspect)
 3. Go to **Application** → **Cookies** → select **instagram.com**
 4. Find and copy the following values:
-    - **sessionid** → `SESSION_ID`
-    - **csrftoken** → `CSRF_TOKEN`
-    - Your numeric user ID can be found in **Account** → **Settings** → **About this account**
+  - **sessionid** → use as `session_id`
+  - **csrftoken** → use as `csrf_token`
+  - Your numeric user ID can be found in **Account** → **Settings** → **About this account**
 
-⚠️ **Security Note:** Never commit your `.env` file to version control. Add it to `.gitignore`.
+These credentials are stored through the app's account management flow, not through an environment file.
 
 ## Running the Application
 
@@ -173,12 +169,12 @@ chmod +x .venv/bin/activate
 
 ### Instagram Session Expired
 
-Your `SESSION_ID` and `CSRF_TOKEN` expire after some time. If you see auth errors:
+Your Instagram `session_id` and `csrf_token` expire after some time. If you see auth errors:
 
 1. Log out and back into Instagram in your browser
 2. Get fresh credentials (see "Getting Instagram Credentials" above)
-3. Update your `.env` file
-4. Restart the backend
+3. Update the Instagram account credentials in the app
+4. Run another scan
 
 ## Next Steps
 
