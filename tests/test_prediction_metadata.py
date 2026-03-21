@@ -45,6 +45,26 @@ def test_extract_user_summary_includes_new_metadata_fields():
     assert result["has_highlight_reels"] is True
 
 
+def test_normalize_prediction_target_input_extracts_username_from_profile_link():
+    username, user_id = account_handler._normalize_prediction_target_input(
+        username="https://www.instagram.com/target.user/?igsh=example",
+        user_id=None,
+    )
+
+    assert username == "target.user"
+    assert user_id is None
+
+
+def test_normalize_prediction_target_input_treats_numeric_input_as_user_id():
+    username, user_id = account_handler._normalize_prediction_target_input(
+        username="1234567890",
+        user_id=None,
+    )
+
+    assert username is None
+    assert user_id == "1234567890"
+
+
 def test_compute_followback_chances_uses_richer_metadata(monkeypatch):
     monkeypatch.setattr(
         account_handler.db_service,

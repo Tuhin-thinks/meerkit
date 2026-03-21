@@ -101,3 +101,70 @@ def test_prediction_task_status_returns_normalized_error(monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["status"] == "error"
+
+
+def test_relationship_cache_status_returns_payload(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "backend.routes.predict.get_active_context",
+        lambda instagram_user_id_override=None: (
+            "app_test_user",
+            {
+                "instagram_user_id": "ig_123",
+                "csrf_token": "csrf",
+                "session_id": "session",
+                "user_id": "viewer_1",
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.routes.predict.account_handler.get_target_relationship_cache_status",
+        lambda **kwargs: {
+            "followers": {
+                "relationship_type": "followers",
+                "days_since_fetch": 2,
+                "is_outdated": False,
+            },
+            "following": {
+                "relationship_type": "following",
+                "days_since_fetch": 1,
+                "is_outdated": True,
+            },
+        },
+    )
+
+    response = client.get("/api/targets/target_1/relationship-cache")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["followers"]["relationship_type"] == "followers"
+    assert payload["following"]["is_outdated"] is True
+
+
+def test_refresh_relationship_cache_requires_valid_type(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "backend.routes.predict.get_active_context",
+        lambda instagram_user_id_override=None: (
+            "app_test_user",
+            {
+                "instagram_user_id": "ig_123",
+                "csrf_token": "csrf",
+                "session_id": "session",
+                "user_id": "viewer_1",
+            },
+        ),
+    )
+
+    response = client.post(
+        "/api/targets/target_1/relationship-cache/refresh",
+        json={"relationship_type": "invalid"},
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert "relationship_type" in payload["error"]
