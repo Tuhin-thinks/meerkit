@@ -67,3 +67,19 @@ export interface PredictionFeedbackPayload {
   notes?: string
   observed_at?: string
 }
+
+export interface RelationshipCacheStatusItem {
+  relationship_type: 'followers' | 'following'
+  fetched_at: string | null
+  days_since_fetch: number | null
+  is_outdated: boolean
+  active_file_present: boolean
+  active_cache_file_path: string | null
+  last_known_count: number | null
+  current_count: number | null
+}
+
+export interface RelationshipCacheStatusResponse {
+  followers: RelationshipCacheStatusItem
+  following: RelationshipCacheStatusItem
+}

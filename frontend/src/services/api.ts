@@ -13,6 +13,7 @@ import type {
   PredictionDetailResponse,
   PredictionFeedbackPayload,
   PredictionRecord,
+  RelationshipCacheStatusResponse,
   PredictionTask,
 } from '../types/prediction'
 
@@ -147,4 +148,31 @@ export const getLatestPredictionTask = (params?: { target_profile_id?: string })
         ...(params || {}),
       },
     })
+    .then((r) => r.data)
+
+export const getTargetRelationshipCacheStatus = (
+  targetProfileId: string,
+  params?: { sync_counts?: boolean },
+) =>
+  http
+    .get<RelationshipCacheStatusResponse>(`/targets/${targetProfileId}/relationship-cache`, {
+      params: {
+        profile_id: activeInstagramUserId,
+        ...(params || {}),
+      },
+    })
+    .then((r) => r.data)
+
+export const refreshTargetRelationshipCache = (
+  targetProfileId: string,
+  relationshipType: 'followers' | 'following',
+) =>
+  http
+    .post<FollowBackPredictionResponse>(
+      `/targets/${targetProfileId}/relationship-cache/refresh`,
+      { relationship_type: relationshipType },
+      {
+        params: { profile_id: activeInstagramUserId },
+      },
+    )
     .then((r) => r.data)

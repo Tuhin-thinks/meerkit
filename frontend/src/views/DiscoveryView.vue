@@ -10,6 +10,7 @@ import type {
     PredictionDetailResponse,
     PredictionRecord,
     PredictionTask,
+    RelationshipCacheStatusResponse,
 } from "../types/prediction";
 
 const props = defineProps<{
@@ -23,9 +24,18 @@ const router = useRouter();
 const usernameInput = ref(props.initialUsername ?? "");
 const prediction = ref<PredictionRecord | null>(null);
 const currentTask = ref<PredictionTask | null>(null);
+const relationshipCache = ref<RelationshipCacheStatusResponse | null>(null);
 const statusMessage = ref("");
 const isLoading = ref(false);
 const errorMessage = ref("");
+const listRefreshPending = ref({
+    followers: false,
+    following: false,
+});
+const listRefreshError = ref({
+    followers: "",
+    following: "",
+});
 
 let disposed = false;
 
@@ -83,6 +93,7 @@ async function pollTask(taskId: string, predictionId: string) {
                 await api.getPrediction(predictionId);
             prediction.value = details.prediction;
             currentTask.value = details.task;
+            await loadRelationshipCacheStatus(false);
             statusMessage.value = "Prediction refreshed successfully.";
             return;
         }
@@ -96,6 +107,17 @@ async function pollTask(taskId: string, predictionId: string) {
         errorMessage.value =
             "Timed out while waiting for refresh. Please try again.";
     }
+}
+
+async function loadRelationshipCacheStatus(syncCounts = false) {
+    if (!prediction.value?.target_profile_id) {
+        relationshipCache.value = null;
+        return;
+    }
+    relationshipCache.value = await api.getTargetRelationshipCacheStatus(
+        prediction.value.target_profile_id,
+        { sync_counts: syncCounts },
+    );
 }
 
 async function loadPrediction(username: string) {
@@ -117,6 +139,7 @@ async function loadPrediction(username: string) {
 
         prediction.value = response.prediction;
         currentTask.value = response.task;
+        await loadRelationshipCacheStatus(false);
 
         if (!response.task) {
             statusMessage.value = "Prediction is ready.";
@@ -160,6 +183,7 @@ async function refreshPrediction() {
         });
         prediction.value = response.prediction;
         currentTask.value = response.task;
+        await loadRelationshipCacheStatus(false);
 
         if (response.task) {
             await pollTask(
@@ -176,6 +200,59 @@ async function refreshPrediction() {
             isLoading.value = false;
         }
     }
+}
+
+async function refreshRelationshipList(relationshipType: "followers" | "following") {
+    if (!prediction.value?.target_profile_id) {
+        return;
+    }
+
+    listRefreshPending.value[relationshipType] = true;
+    listRefreshError.value[relationshipType] = "";
+    statusMessage.value = `Refreshing ${relationshipType} list...`;
+
+    try {
+        const response = await api.refreshTargetRelationshipCache(
+            prediction.value.target_profile_id,
+            relationshipType,
+        );
+        prediction.value = response.prediction;
+        currentTask.value = response.task;
+
+        if (response.task) {
+            await pollTask(
+                response.task.task_id,
+                response.prediction.prediction_id,
+            );
+        }
+        await loadRelationshipCacheStatus(false);
+    } catch (error: unknown) {
+        listRefreshError.value[relationshipType] =
+            (error as { response?: { data?: { error?: string } } })?.response
+                ?.data?.error || `Could not refresh ${relationshipType} right now.`;
+    } finally {
+        listRefreshPending.value[relationshipType] = false;
+    }
+}
+
+function formatFetchedAt(value: string | null | undefined) {
+    if (!value) {
+        return "Not fetched yet";
+    }
+    return new Date(value).toLocaleString();
+}
+
+function formatDaysSince(value: number | null | undefined) {
+    if (value === null || value === undefined) {
+        return "Not fetched yet";
+    }
+    if (value === 0) {
+        return "Fetched today";
+    }
+    if (value === 1) {
+        return "Fetched 1 day ago";
+    }
+    return `Fetched ${value} days ago`;
 }
 
 function submitLookup() {
@@ -346,6 +423,87 @@ async function markFeedback(status: "correct" | "wrong") {
                         Detailed target metadata is still loading. If this user
                         has not been refreshed yet, wait for the task to finish.
                     </p>
+
+                    <div
+                        v-if="relationshipCache"
+                        class="space-y-3 pt-2 border-t border-gray-100"
+                    >
+                        <p class="text-xs uppercase tracking-wide text-gray-500">
+                            Relationship list cache
+                        </p>
+
+                        <div class="grid sm:grid-cols-2 gap-3 text-sm">
+                            <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/70">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="font-semibold text-gray-800">Followers list</p>
+                                    <span
+                                        v-if="relationshipCache.followers.is_outdated"
+                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"
+                                    >
+                                        Outdated
+                                    </span>
+                                </div>
+                                <p class="text-gray-600 mt-1">
+                                    {{ formatDaysSince(relationshipCache.followers.days_since_fetch) }}
+                                </p>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    Last fetched: {{ formatFetchedAt(relationshipCache.followers.fetched_at) }}
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                    Count snapshot: {{ relationshipCache.followers.last_known_count ?? "--" }}
+                                    · Current known: {{ relationshipCache.followers.current_count ?? "--" }}
+                                </p>
+                                <button
+                                    :disabled="isLoading || listRefreshPending.followers"
+                                    class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                    @click="refreshRelationshipList('followers')"
+                                >
+                                    {{ listRefreshPending.followers ? "Refreshing..." : "Refresh followers" }}
+                                </button>
+                                <p
+                                    v-if="listRefreshError.followers"
+                                    class="text-xs text-rose-600 mt-1"
+                                >
+                                    {{ listRefreshError.followers }}
+                                </p>
+                            </div>
+
+                            <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/70">
+                                <div class="flex items-center justify-between gap-2">
+                                    <p class="font-semibold text-gray-800">Following list</p>
+                                    <span
+                                        v-if="relationshipCache.following.is_outdated"
+                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"
+                                    >
+                                        Outdated
+                                    </span>
+                                </div>
+                                <p class="text-gray-600 mt-1">
+                                    {{ formatDaysSince(relationshipCache.following.days_since_fetch) }}
+                                </p>
+                                <p class="text-xs text-gray-500 mt-1">
+                                    Last fetched: {{ formatFetchedAt(relationshipCache.following.fetched_at) }}
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                    Count snapshot: {{ relationshipCache.following.last_known_count ?? "--" }}
+                                    · Current known: {{ relationshipCache.following.current_count ?? "--" }}
+                                </p>
+                                <button
+                                    :disabled="isLoading || listRefreshPending.following"
+                                    class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                    @click="refreshRelationshipList('following')"
+                                >
+                                    {{ listRefreshPending.following ? "Refreshing..." : "Refresh following" }}
+                                </button>
+                                <p
+                                    v-if="listRefreshError.following"
+                                    class="text-xs text-rose-600 mt-1"
+                                >
+                                    {{ listRefreshError.following }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 

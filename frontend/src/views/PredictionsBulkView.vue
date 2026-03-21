@@ -17,7 +17,9 @@ const props = defineProps<{
 }>();
 
 interface BatchRow {
-    username: string;
+    rawInput: string;
+    username: string | null;
+    userId: string | null;
     status: "ready" | "queued" | "running" | "completed" | "error" | "invalid";
     message: string;
     prediction: PredictionRecord | null;
@@ -27,9 +29,11 @@ interface BatchRow {
 const input = ref("");
 const isRunning = ref(false);
 const rows = ref<BatchRow[]>([]);
-const batchPlaceholder = ["example_user", "second.user", "third_user"].join(
-    "\n",
-);
+const batchPlaceholder = [
+    "example_user",
+    "https://www.instagram.com/second.user/",
+    "12345678901234567",
+].join("\n");
 let disposed = false;
 
 onBeforeUnmount(() => {
@@ -37,6 +41,24 @@ onBeforeUnmount(() => {
 });
 
 const validUsernamePattern = /^[a-zA-Z0-9._]+$/;
+const instagramProfileHosts = new Set([
+    "instagram.com",
+    "www.instagram.com",
+    "m.instagram.com",
+]);
+const reservedInstagramPathPrefixes = new Set([
+    "about",
+    "accounts",
+    "developer",
+    "direct",
+    "explore",
+    "graphql",
+    "p",
+    "reel",
+    "reels",
+    "stories",
+    "tv",
+]);
 
 const completedCount = computed(
     () => rows.value.filter((row) => row.status === "completed").length,
@@ -49,22 +71,95 @@ const erroredCount = computed(
         ).length,
 );
 
-function parseUsernames(raw: string): string[] {
+function extractInstagramUsername(token: string): string | null {
+    if (!token.toLowerCase().includes("instagram.com")) {
+        return null;
+    }
+
+    let candidate = token.trim();
+    if (!candidate.includes("://")) {
+        candidate = `https://${candidate.replace(/^\/+/, "")}`;
+    }
+
+    try {
+        const parsed = new URL(candidate);
+        if (!instagramProfileHosts.has(parsed.hostname.toLowerCase())) {
+            return null;
+        }
+
+        const firstPathSegment = parsed.pathname
+            .split("/")
+            .filter(Boolean)[0]
+            ?.replace(/^@/, "")
+            .trim();
+        if (!firstPathSegment) {
+            return null;
+        }
+        if (reservedInstagramPathPrefixes.has(firstPathSegment.toLowerCase())) {
+            return null;
+        }
+        return firstPathSegment;
+    } catch {
+        return null;
+    }
+}
+
+function parseTargets(raw: string): BatchRow[] {
     const tokens = raw
         .split(/[\n,]/)
         .map((token) => token.trim())
         .filter(Boolean);
 
-    const deduped: string[] = [];
+    const deduped: BatchRow[] = [];
     const seen = new Set<string>();
     for (const token of tokens) {
-        const normalized = token.toLowerCase();
-        if (!seen.has(normalized)) {
-            seen.add(normalized);
-            deduped.push(token);
+        const linkUsername = extractInstagramUsername(token);
+        const normalizedToken = (linkUsername || token).replace(/^@/, "").trim();
+
+        let username: string | null = null;
+        let userId: string | null = null;
+        let status: BatchRow["status"] = "ready";
+        let message = "Ready";
+
+        if (/^\d+$/.test(normalizedToken)) {
+            userId = normalizedToken;
+        } else if (validUsernamePattern.test(normalizedToken)) {
+            username = normalizedToken;
+        } else {
+            status = "invalid";
+            message = "Enter a username, Instagram profile link, or numeric user ID.";
+        }
+
+        const dedupeKey = userId
+            ? `user:${userId}`
+            : username
+              ? `username:${username.toLowerCase()}`
+              : `invalid:${token.toLowerCase()}`;
+        if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
+            deduped.push({
+                rawInput: token,
+                username,
+                userId,
+                status,
+                message,
+                prediction: null,
+                task: null,
+            });
         }
     }
     return deduped;
+}
+
+function getRowTitle(row: BatchRow): string {
+    const resolvedUsername = row.prediction?.target_username || row.username;
+    if (resolvedUsername) {
+        return `@${resolvedUsername}`;
+    }
+    if (row.userId) {
+        return `ID ${row.userId}`;
+    }
+    return row.rawInput;
 }
 
 async function pollTask(row: BatchRow, taskId: string, predictionId: string) {
@@ -100,16 +195,17 @@ async function pollTask(row: BatchRow, taskId: string, predictionId: string) {
 }
 
 async function executeRow(row: BatchRow) {
-    if (!validUsernamePattern.test(row.username)) {
+    if (!row.username && !row.userId) {
         row.status = "invalid";
-        row.message = "Username contains unsupported characters.";
+        row.message = "Enter a username, Instagram profile link, or numeric user ID.";
         return;
     }
 
     try {
         const response: FollowBackPredictionResponse =
             await api.createFollowBackPrediction({
-                username: row.username,
+                username: row.username ?? undefined,
+                user_id: row.userId ?? undefined,
                 refresh: false,
                 force_background: false,
             });
@@ -134,28 +230,21 @@ async function executeRow(row: BatchRow) {
         const message =
             (error as { response?: { data?: { error?: string } } })?.response
                 ?.data?.error ||
-            "Could not request prediction for this username.";
+            "Could not request prediction for this target.";
         row.status = "error";
         row.message = message;
     }
 }
 
 async function runBatch() {
-    const usernames = parseUsernames(input.value);
-    rows.value = usernames.map((username) => ({
-        username,
-        status: "ready",
-        message: "Ready",
-        prediction: null,
-        task: null,
-    }));
+    rows.value = parseTargets(input.value);
 
     if (!rows.value.length) {
         return;
     }
 
     isRunning.value = true;
-    const queue = [...rows.value];
+    const queue = rows.value.filter((row) => row.status === "ready");
     const workers = Array.from({ length: Math.min(3, queue.length) }).map(
         async () => {
             while (queue.length && !disposed) {
@@ -191,8 +280,9 @@ function clearResults() {
                 Bulk Follow-Back Predictions
             </h2>
             <p class="text-sm text-gray-500 mt-1">
-                Paste Instagram usernames separated by new lines or commas to
-                check follow-back probability.
+                Paste Instagram usernames, profile links, or numeric user IDs
+                separated by new lines or commas to check follow-back
+                probability.
             </p>
 
             <textarea
@@ -228,7 +318,7 @@ function clearResults() {
         <PredictionStatePanel
             v-if="!rows.length"
             title="No batch started yet"
-            message="Paste one or more usernames to queue predictions. Cached results return immediately and queued refreshes will update progressively."
+            message="Paste one or more usernames, profile links, or user IDs to queue predictions. Cached results return immediately and queued refreshes will update progressively."
             tone="info"
         />
 
@@ -246,18 +336,28 @@ function clearResults() {
             <div class="divide-y divide-gray-100">
                 <div
                     v-for="row in rows"
-                    :key="row.username"
+                    :key="row.userId || row.username || row.rawInput"
                     class="px-4 py-3 grid lg:grid-cols-[1.3fr,0.9fr,2fr,1fr] gap-3 items-start"
                 >
                     <div>
                         <p class="font-semibold text-sm text-gray-900">
-                            @{{ row.username }}
+                            {{ getRowTitle(row) }}
+                        </p>
+                        <p
+                            v-if="row.rawInput !== (row.prediction?.target_username || row.username || row.userId || row.rawInput)"
+                            class="text-[11px] text-gray-400 mt-1 break-all"
+                        >
+                            {{ row.rawInput }}
                         </p>
                         <RouterLink
-                            v-if="row.prediction"
+                            v-if="row.prediction && (row.prediction.target_username || row.username)"
                             :to="{
                                 name: 'discovery',
-                                params: { username: row.username },
+                                params: {
+                                    username:
+                                        row.prediction.target_username ||
+                                        row.username,
+                                },
                             }"
                             class="text-xs text-teal-700 hover:text-teal-900 font-medium"
                         >
