@@ -28,10 +28,10 @@ const confidenceLabel = computed(() => {
 const toneClass = computed(() => {
     const value = props.probability ?? -1;
     if (value >= 0.75)
-        return "bg-emerald-50 text-emerald-800 border-emerald-200";
-    if (value >= 0.45) return "bg-amber-50 text-amber-800 border-amber-200";
-    if (value >= 0) return "bg-rose-50 text-rose-800 border-rose-200";
-    return "bg-gray-50 text-gray-500 border-gray-200";
+        return "bg-emerald-500/12 text-emerald-300 border-emerald-500/25";
+    if (value >= 0.45) return "bg-amber-500/12 text-amber-300 border-amber-500/25";
+    if (value >= 0) return "bg-rose-500/12 text-rose-300 border-rose-500/25";
+    return "bg-slate-800/70 text-slate-400 border-slate-700/70";
 });
 
 const sizeClass = computed(() =>

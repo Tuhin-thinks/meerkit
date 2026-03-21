@@ -12,7 +12,7 @@ const hasError = ref(false);
 
 <template>
     <div
-        class="rounded-full overflow-hidden bg-gray-100 shrink-0 flex items-center justify-center"
+        class="rounded-full overflow-hidden bg-slate-800 shrink-0 flex items-center justify-center"
     >
         <img
             v-if="!hasError"
@@ -23,6 +23,6 @@ const hasError = ref(false);
             @error="hasError = true"
         />
         <!-- Fallback avatar when image is unavailable -->
-        <span v-else class="text-gray-400 text-xl select-none">👤</span>
+        <span v-else class="text-slate-500 text-xl select-none">👤</span>
     </div>
 </template>

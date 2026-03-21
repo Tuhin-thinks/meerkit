@@ -152,20 +152,20 @@ async function onTerminate(task: TaskSummary) {
 </script>
 
 <template>
-    <section class="space-y-5">
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+    <section class="space-y-5 fade-in">
+        <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-lg font-bold text-gray-900">
-                        Running Tasks
+                    <h2 class="text-xl font-bold font-display text-gradient">
+                        Tasks
                     </h2>
-                    <p class="text-sm text-gray-500 mt-1">
+                    <p class="text-sm text-slate-400 mt-1">
                         Monitor active background work and terminate tasks when
                         needed.
                     </p>
                 </div>
                 <span
-                    class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-indigo-100 text-indigo-800"
+                    class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide bg-violet-500/10 text-violet-400 border border-violet-500/20"
                 >
                     {{ runningCount }} running
                 </span>
@@ -176,16 +176,16 @@ async function onTerminate(task: TaskSummary) {
             <div
                 v-for="i in 3"
                 :key="i"
-                class="h-24 bg-white rounded-xl border border-gray-100 animate-pulse"
+                class="h-24 bg-[#16213a] rounded-xl border border-white/[0.06] shimmer"
             />
         </div>
 
         <div
             v-else-if="!tasks.length"
-            class="bg-white border border-gray-200 rounded-2xl shadow-sm p-10 text-center text-gray-500"
+            class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-10 text-center"
         >
-            <p class="font-semibold text-gray-700">No active tasks</p>
-            <p class="text-sm mt-1">
+            <p class="font-semibold text-slate-300">No active tasks</p>
+            <p class="text-sm mt-1 text-slate-500">
                 Start a scan or prediction refresh to see live task updates
                 here.
             </p>
@@ -195,26 +195,26 @@ async function onTerminate(task: TaskSummary) {
             <article
                 v-for="task in tasks"
                 :key="task.task_id"
-                class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4"
+                class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-xl shadow-black/20 p-4 card-hover"
             >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
                             <p
-                                class="text-sm font-semibold text-gray-900 truncate"
+                                class="text-sm font-semibold text-slate-100 truncate"
                             >
                                 {{ task.task_type.replace(/_/g, " ") }}
                             </p>
                             <span
-                                class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-600"
+                                class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-400"
                             >
                                 {{ task.source }}
                             </span>
                         </div>
-                        <p class="text-xs text-gray-500 mt-1 break-all">
+                        <p class="text-xs text-slate-500 mt-1 break-all">
                             Target ID: {{ task.target_profile_id || "--" }}
                         </p>
-                        <p class="text-xs text-gray-500">
+                        <p class="text-xs text-slate-500">
                             Started:
                             {{ formatDate(task.started_at || task.queued_at) }}
                         </p>
@@ -225,7 +225,7 @@ async function onTerminate(task: TaskSummary) {
                         <button
                             v-if="task.can_cancel"
                             :disabled="terminatingTaskId === task.task_id"
-                            class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-semibold hover:bg-rose-100 disabled:opacity-50"
+                            class="btn-danger px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
                             @click="onTerminate(task)"
                         >
                             {{
@@ -239,15 +239,15 @@ async function onTerminate(task: TaskSummary) {
 
                 <div class="mt-3 space-y-1">
                     <TaskProgressBar :task="toPredictionTask(task)" />
-                    <p v-if="task.metric_label" class="text-xs text-gray-500">
+                    <p v-if="task.metric_label" class="text-xs text-slate-500">
                         {{ task.metric_label }}: {{ task.metric_value ?? "--" }}
                     </p>
-                    <p v-if="task.error" class="text-xs text-rose-600">
+                    <p v-if="task.error" class="text-xs text-rose-400">
                         {{ task.error }}
                     </p>
                     <p
                         v-if="terminationNoticeByTaskId[task.task_id]"
-                        class="text-xs text-emerald-700"
+                        class="text-xs text-emerald-400"
                     >
                         {{ terminationNoticeByTaskId[task.task_id] }}
                     </p>

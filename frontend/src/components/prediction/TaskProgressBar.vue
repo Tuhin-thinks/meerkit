@@ -16,13 +16,13 @@ const width = computed(
         v-if="task && (task.status === 'queued' || task.status === 'running')"
         class="space-y-1"
     >
-        <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div class="h-2 rounded-full bg-slate-800 overflow-hidden">
             <div
                 :style="{ width }"
-                class="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all"
+                class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-violet-500 transition-all"
             />
         </div>
-        <p class="text-[11px] text-gray-500">
+        <p class="text-[11px] text-slate-500">
             {{ task.status }} · {{ Math.round((task.progress || 0) * 100) }}%
         </p>
     </div>

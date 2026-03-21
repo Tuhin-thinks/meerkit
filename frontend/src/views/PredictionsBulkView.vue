@@ -280,12 +280,12 @@ function clearResults() {
 </script>
 
 <template>
-    <section class="space-y-5">
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <h2 class="text-lg font-bold text-gray-900">
+    <section class="space-y-5 fade-in">
+        <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6">
+            <h2 class="text-xl font-bold font-display text-gradient">
                 Bulk Follow-Back Predictions
             </h2>
-            <p class="text-sm text-gray-500 mt-1">
+            <p class="text-sm text-slate-400 mt-1">
                 Paste Instagram usernames, profile links, or numeric user IDs
                 separated by new lines or commas to check follow-back
                 probability.
@@ -294,25 +294,25 @@ function clearResults() {
             <textarea
                 v-model="input"
                 rows="6"
-                class="mt-4 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                class="input-dark mt-4"
                 :placeholder="batchPlaceholder"
             />
 
             <div class="mt-3 flex items-center justify-between gap-3">
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-slate-500">
                     Active profile: {{ props.profileId }}
                 </p>
                 <div class="flex items-center gap-2">
                     <button
                         v-if="rows.length"
-                        class="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200"
+                        class="btn-ghost px-4 py-2 rounded-lg text-sm font-semibold"
                         @click="clearResults"
                     >
                         Clear
                     </button>
                     <button
                         :disabled="isRunning"
-                        class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                        class="btn-violet px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
                         @click="runBatch"
                     >
                         {{ isRunning ? "Running batch..." : "Start Batch" }}
@@ -330,28 +330,28 @@ function clearResults() {
 
         <div
             v-if="rows.length"
-            class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden"
+            class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 overflow-hidden"
         >
             <div
-                class="px-4 py-3 border-b border-gray-100 bg-gray-50 text-sm text-gray-600 flex gap-4"
+                class="px-4 py-3 border-b border-white/[0.07] bg-white/[0.02] text-sm text-slate-400 flex gap-4"
             >
                 <span>Completed: {{ completedCount }}</span>
                 <span>Issues: {{ erroredCount }}</span>
                 <span>Total: {{ rows.length }}</span>
             </div>
-            <div class="divide-y divide-gray-100">
+            <div class="divide-y divide-white/[0.07]">
                 <div
                     v-for="row in rows"
                     :key="row.userId || row.username || row.rawInput"
                     class="px-4 py-3 grid lg:grid-cols-[1.3fr,0.9fr,2fr,1fr] gap-3 items-start"
                 >
                     <div>
-                        <p class="font-semibold text-sm text-gray-900">
+                        <p class="font-semibold text-sm text-slate-100">
                             {{ getRowTitle(row) }}
                         </p>
                         <p
                             v-if="row.rawInput !== (row.prediction?.target_username || row.username || row.userId || row.rawInput)"
-                            class="text-[11px] text-gray-400 mt-1 break-all"
+                            class="text-[11px] text-slate-500 mt-1 break-all"
                         >
                             {{ row.rawInput }}
                         </p>
@@ -365,7 +365,7 @@ function clearResults() {
                                         row.username,
                                 },
                             }"
-                            class="text-xs text-teal-700 hover:text-teal-900 font-medium"
+                            class="text-xs text-cyan-400 hover:text-cyan-300 font-medium"
                         >
                             Open discovery
                         </RouterLink>
@@ -376,7 +376,7 @@ function clearResults() {
                     </div>
 
                     <div class="space-y-2">
-                        <p class="text-sm text-gray-700">
+                        <p class="text-sm text-slate-300">
                             {{ row.message }}
                         </p>
                         <TaskProgressBar :task="row.task" />
@@ -392,7 +392,7 @@ function clearResults() {
                                 row.prediction &&
                                 row.prediction.target_profile_id
                             "
-                            class="text-[11px] text-gray-400 mt-1 text-right"
+                            class="text-[11px] text-slate-500 mt-1 text-right"
                         >
                             {{
                                 formatProbability(

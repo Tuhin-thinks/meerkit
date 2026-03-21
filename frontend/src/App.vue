@@ -7,6 +7,7 @@ import HistoryView from "./views/HistoryView.vue";
 import PredictionsBulkView from "./views/PredictionsBulkView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
 import TasksView from "./views/TasksView.vue";
+import TechBackground from "./components/TechBackground.vue";
 import * as api from "./services/api";
 import type {
     InstagramUserRecord,
@@ -322,97 +323,93 @@ const discoveryUsername = computed(() => {
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-50 text-gray-900" v-if="!meLoading">
-        <main v-if="!isLoggedIn" class="max-w-xl mx-auto px-6 py-16 space-y-6">
-            <div class="bg-white border border-gray-200 shadow-sm rounded-2xl p-6">
-                <h1 class="text-2xl font-bold text-gray-900 mb-1">App Login</h1>
-                <p class="text-sm text-gray-500 mb-6">
-                    Login uses app user name and password only.
-                </p>
+    <div class="relative min-h-screen bg-[#0d1426] text-slate-100" v-if="!meLoading">
+        <TechBackground />
+        <div class="relative z-10">
 
-                <form class="space-y-4" @submit.prevent="doLogin()">
-                    <input
-                        v-model="loginForm.name"
-                        placeholder="Name"
-                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <input
-                        v-model="loginForm.password"
-                        type="password"
-                        placeholder="Password"
-                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <button
-                        :disabled="loginPending"
-                        class="w-full bg-indigo-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                        {{ loginPending ? "Logging in…" : "Login" }}
-                    </button>
-                </form>
-                <p v-if="loginError" class="text-sm text-rose-600 mt-3">
-                    Invalid app credentials.
-                </p>
-            </div>
+        <!-- ── Login / Register ──────────────────────────────────────── -->
+        <main v-if="!isLoggedIn" class="min-h-screen flex items-center justify-center px-4 py-16">
+            <div class="w-full max-w-md space-y-5 fade-in">
+                <!-- Brand mark -->
+                <div class="text-center mb-8">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-violet-600/10 border border-violet-500/20 mb-4 pulse-ring">
+                        <span class="text-3xl">✦</span>
+                    </div>
+                    <h1 class="text-3xl font-bold font-display text-gradient">Meerkit</h1>
+                    <p class="text-sm text-slate-400 mt-1">Follower Intelligence</p>
+                </div>
 
-            <div class="bg-white border border-gray-200 shadow-sm rounded-2xl p-6">
-                <h2 class="text-lg font-semibold text-gray-900 mb-3">
-                    Create App User
-                </h2>
-                <form class="space-y-3" @submit.prevent="doRegister()">
-                    <input
-                        v-model="registerForm.name"
-                        placeholder="Name"
-                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <input
-                        v-model="registerForm.password"
-                        type="password"
-                        placeholder="Password"
-                        class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                    />
-                    <button
-                        :disabled="registerPending"
-                        class="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-black disabled:opacity-50"
-                    >
-                        {{ registerPending ? "Creating…" : "Create User" }}
-                    </button>
-                </form>
-                <p v-if="registerError" class="text-sm text-rose-600 mt-3">
-                    Could not create app user.
-                </p>
+                <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl p-6 shadow-2xl shadow-black/40">
+                    <h2 class="text-lg font-semibold text-slate-100 mb-1">Sign in</h2>
+                    <p class="text-xs text-slate-500 mb-5">App user credentials only.</p>
+
+                    <form class="space-y-3" @submit.prevent="doLogin()">
+                        <input
+                            v-model="loginForm.name"
+                            placeholder="Name"
+                            class="input-dark"
+                        />
+                        <input
+                            v-model="loginForm.password"
+                            type="password"
+                            placeholder="Password"
+                            class="input-dark"
+                        />
+                        <button
+                            :disabled="loginPending"
+                            class="btn-violet w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                        >
+                            {{ loginPending ? "Signing in…" : "Sign in" }}
+                        </button>
+                    </form>
+                    <p v-if="loginError" class="text-sm text-rose-400 mt-3">Invalid credentials.</p>
+                </div>
+
+                <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl p-6 shadow-2xl shadow-black/40">
+                    <h2 class="text-base font-semibold text-slate-200 mb-3">Create account</h2>
+                    <form class="space-y-3" @submit.prevent="doRegister()">
+                        <input v-model="registerForm.name" placeholder="Name" class="input-dark" />
+                        <input v-model="registerForm.password" type="password" placeholder="Password" class="input-dark" />
+                        <button
+                            :disabled="registerPending"
+                            class="btn-ghost w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
+                        >
+                            {{ registerPending ? "Creating…" : "Create account" }}
+                        </button>
+                    </form>
+                    <p v-if="registerError" class="text-sm text-rose-400 mt-3">Could not create account.</p>
+                </div>
             </div>
         </main>
 
         <template v-else>
-            <nav
-                class="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-3 shadow-sm"
-            >
+            <!-- ── Navigation ───────────────────────────────────────── -->
+            <nav class="sticky top-0 z-10 bg-[#0d1426]/85 backdrop-blur-xl border-b border-white/[0.06] px-6 py-3 shadow-xl shadow-black/20">
                 <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+                    <!-- Brand -->
                     <div>
-                        <p class="text-lg font-bold tracking-tight">📊 Follower Tracker</p>
-                        <p class="text-xs text-gray-500">App user: {{ meData?.name }}</p>
-                        <p v-if="activeInstagramUser" class="text-xs text-gray-500 mt-0.5">
-                            Active account:
-                            <span class="font-semibold text-gray-700">{{ activeInstagramUser.name }}</span>
+                        <p class="text-lg font-bold font-display text-gradient tracking-tight">✦ Meerkit</p>
+                        <p class="text-[11px] text-slate-500">{{ meData?.name }}</p>
+                        <p v-if="activeInstagramUser" class="text-[11px] text-slate-500 mt-0.5">
+                            <span class="text-slate-400 font-medium">@{{ activeInstagramUser.name }}</span>
                         </p>
                     </div>
 
-                    <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                    <!-- Tab nav -->
+                    <div class="flex gap-0.5 bg-white/[0.04] border border-white/[0.06] p-1 rounded-xl">
                         <button
                             v-for="item in [
-                                { key: 'dashboard', label: 'Dashboard' },
-                                { key: 'history', label: 'History' },
-                                { key: 'predictions', label: 'Predictions' },
-                                { key: 'tasks', label: 'Tasks' },
-                                { key: 'admin', label: 'Admin' },
+                                { key: 'dashboard',   label: '⌂ Dashboard'   },
+                                { key: 'history',     label: '📋 History'     },
+                                { key: 'predictions', label: '🔮 Predictions' },
+                                { key: 'tasks',       label: '⚡ Tasks'       },
+                                { key: 'admin',       label: '⚙ Admin'       },
                             ]"
                             :key="item.key"
-                            :class="
-                                currentView === item.key
-                                    ? 'bg-white shadow text-gray-900'
-                                    : 'text-gray-500 hover:text-gray-700'
-                            "
-                            class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
+                            :class="currentView === item.key
+                                ? 'bg-violet-600/15 text-violet-300 shadow-inner'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'"
+                            class="px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all"
                             @click="goTo(item.key as AppView)"
                         >
                             {{ item.label }}
@@ -422,13 +419,14 @@ const discoveryUsername = computed(() => {
                     <button
                         :disabled="logoutPending"
                         @click="doLogout()"
-                        class="text-xs px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100"
+                        class="btn-danger rounded-lg px-3 py-1.5 text-xs font-semibold"
                     >
                         Logout
                     </button>
                 </div>
             </nav>
 
+            <!-- ── Main content ──────────────────────────────────────── -->
             <main class="max-w-6xl mx-auto px-6 py-8">
                 <KeepAlive>
                     <Dashboard
@@ -466,256 +464,225 @@ const discoveryUsername = computed(() => {
                     />
                 </KeepAlive>
 
-                <div v-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6">
-                    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h2 class="text-lg font-semibold">Instagram Users</h2>
+                <!-- ── Admin ─────────────────────────────────────────── -->
+                <div v-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6 fade-in">
+                    <section class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6">
+                        <div class="flex items-center justify-between mb-5">
+                            <h2 class="text-base font-semibold text-slate-100">Instagram Accounts</h2>
                             <button
                                 :disabled="removeAllPending"
                                 @click="removeAllInstagramUsers()"
-                                class="text-xs px-3 py-1.5 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                                class="btn-danger rounded-lg px-3 py-1.5 text-xs font-medium"
                             >
                                 Delete All
                             </button>
                         </div>
 
-                        <div v-if="!instagramUsers.length" class="text-sm text-gray-500">
-                            No instagram users yet. Add one using the form.
-                        </div>
+                        <div v-if="!instagramUsers.length" class="text-sm text-slate-500 text-center py-8">No accounts yet.</div>
                         <div v-else class="space-y-2">
                             <button
                                 v-for="u in instagramUsers"
                                 :key="u.instagram_user_id"
-                                class="w-full text-left border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50"
+                                class="w-full text-left border border-white/[0.06] rounded-xl px-4 py-3 hover:bg-white/[0.04] hover:border-violet-500/20 transition-all card-hover gradient-border"
                                 @click="openDetails(u.instagram_user_id)"
                             >
                                 <div class="flex items-center gap-2">
-                                    <p class="text-sm font-semibold">{{ u.name }}</p>
+                                    <p class="text-sm font-semibold text-slate-100">{{ u.name }}</p>
                                     <span
                                         v-if="activeInstagramUser?.instagram_user_id === u.instagram_user_id"
-                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
-                                    >
-                                        Active
-                                    </span>
+                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"
+                                    >Active</span>
                                     <span
                                         v-if="hasStaleCredentials(u)"
-                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-800"
-                                    >
-                                        Credentials old
-                                    </span>
+                                        class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20"
+                                    >Credentials old</span>
                                 </div>
-                                <p class="text-xs text-gray-500">USER_ID: {{ u.user_id }}</p>
+                                <p class="text-xs text-slate-500 mt-0.5">USER_ID: {{ u.user_id }}</p>
                             </button>
                         </div>
                     </section>
 
-                    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-                        <h2 class="text-lg font-semibold mb-4">Add Instagram User</h2>
+                    <section class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6">
+                        <h2 class="text-base font-semibold text-slate-100 mb-5">Add Instagram Account</h2>
                         <form class="space-y-3" @submit.prevent="addInstagramUser()">
-                            <input
-                                v-model="instagramUserForm.name"
-                                placeholder="Display name (optional)"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            />
-                            <input
-                                v-model="instagramUserForm.csrf_token"
-                                placeholder="CSRF_TOKEN (required)"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            />
-                            <input
-                                v-model="instagramUserForm.session_id"
-                                placeholder="SESSION_ID (required)"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            />
-                            <input
-                                v-model="instagramUserForm.user_id"
-                                placeholder="USER_ID (required)"
-                                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                            />
-                            <button
-                                :disabled="addInstagramUserPending"
-                                class="w-full bg-indigo-600 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-                            >
-                                {{ addInstagramUserPending ? "Adding…" : "Add Instagram User" }}
+                            <input v-model="instagramUserForm.name"       placeholder="Display name (optional)"  class="input-dark" />
+                            <input v-model="instagramUserForm.csrf_token" placeholder="CSRF_TOKEN (required)"    class="input-dark" />
+                            <input v-model="instagramUserForm.session_id" placeholder="SESSION_ID (required)"   class="input-dark" />
+                            <input v-model="instagramUserForm.user_id"    placeholder="USER_ID (required)"      class="input-dark" />
+                            <button :disabled="addInstagramUserPending" class="btn-violet w-full rounded-xl px-4 py-2.5 text-sm font-semibold">
+                                {{ addInstagramUserPending ? "Adding…" : "Add Account" }}
                             </button>
                         </form>
-                        <p v-if="addInstagramUserError" class="text-sm text-rose-600 mt-3">
-                            Could not add instagram user. All credential fields are mandatory.
-                        </p>
+                        <p v-if="addInstagramUserError" class="text-sm text-rose-400 mt-3">Could not add account. All credential fields are mandatory.</p>
                     </section>
                 </div>
 
+                <!-- ── Account Details ───────────────────────────────── -->
                 <div
                     v-if="currentView === 'details' && selectedInstagramUser"
-                    class="max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
+                    class="max-w-2xl bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6 fade-in"
                 >
                     <button
                         @click="goTo('admin')"
-                        class="text-xs mb-4 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                        class="btn-ghost rounded-lg px-3 py-1.5 text-xs mb-5 inline-flex items-center gap-1"
                     >
                         ← Back to Admin
                     </button>
-                    <h2 class="text-xl font-bold mb-4">{{ selectedInstagramUser.name }}</h2>
-                    <p v-if="activeAccountMessage" class="mb-4 text-sm rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <h2 class="text-xl font-bold text-slate-100 mb-4 font-display">{{ selectedInstagramUser.name }}</h2>
+                    <p v-if="activeAccountMessage" class="mb-4 text-sm rounded-xl px-3 py-2.5 bg-emerald-400/10 text-emerald-400 border border-emerald-400/20">
                         {{ activeAccountMessage }}
                     </p>
                     <div class="grid gap-2 text-sm">
                         <p>
-                            <span class="font-semibold">Status:</span>
+                            <span class="text-slate-400 font-medium">Status:</span>
                             <span
                                 v-if="activeInstagramUser?.instagram_user_id === selectedInstagramUser.instagram_user_id"
-                                class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700"
-                            >
-                                Active account
-                            </span>
-                            <span
-                                v-else
-                                class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-700"
-                            >
-                                Inactive
-                            </span>
+                                class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-400/10 text-emerald-400 border border-emerald-400/20"
+                            >Active account</span>
+                            <span v-else class="ml-2 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-white/[0.06] text-slate-400">Inactive</span>
                         </p>
-                        <p><span class="font-semibold">Instagram User ID:</span> {{ selectedInstagramUser.instagram_user_id }}</p>
-                        <p v-if="selectedInstagramUser.username"><span class="font-semibold">Username:</span> {{ selectedInstagramUser.username }}</p>
-                        <p><span class="font-semibold">USER_ID:</span> {{ selectedInstagramUser.user_id }}</p>
-                        <p><span class="font-semibold">CSRF_TOKEN:</span> {{ selectedInstagramUser.csrf_token }}</p>
-                        <p><span class="font-semibold">SESSION_ID:</span> {{ selectedInstagramUser.session_id }}</p>
-                        <p><span class="font-semibold">Created:</span> {{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</p>
+                        <p><span class="text-slate-400 font-medium">Instagram User ID:</span> <span class="text-slate-200">{{ selectedInstagramUser.instagram_user_id }}</span></p>
+                        <p v-if="selectedInstagramUser.username"><span class="text-slate-400 font-medium">Username:</span> <span class="text-slate-200">{{ selectedInstagramUser.username }}</span></p>
+                        <p><span class="text-slate-400 font-medium">USER_ID:</span> <span class="text-slate-200">{{ selectedInstagramUser.user_id }}</span></p>
+                        <p><span class="text-slate-400 font-medium">CSRF_TOKEN:</span> <span class="text-slate-300 break-all text-xs">{{ selectedInstagramUser.csrf_token }}</span></p>
+                        <p><span class="text-slate-400 font-medium">SESSION_ID:</span> <span class="text-slate-300 break-all text-xs">{{ selectedInstagramUser.session_id }}</span></p>
+                        <p><span class="text-slate-400 font-medium">Created:</span> <span class="text-slate-200">{{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</span></p>
                         <p>
-                            <span class="font-semibold">CSRF token added:</span>
-                            {{ selectedInstagramUser.csrf_token_added_at ? new Date(selectedInstagramUser.csrf_token_added_at).toLocaleString() : "Unknown" }}
+                            <span class="text-slate-400 font-medium">CSRF token added:</span>
+                            <span class="text-slate-200">{{ selectedInstagramUser.csrf_token_added_at ? new Date(selectedInstagramUser.csrf_token_added_at).toLocaleString() : "Unknown" }}</span>
                         </p>
                         <p>
-                            <span class="font-semibold">Session ID added:</span>
-                            {{ selectedInstagramUser.session_id_added_at ? new Date(selectedInstagramUser.session_id_added_at).toLocaleString() : "Unknown" }}
+                            <span class="text-slate-400 font-medium">Session ID added:</span>
+                            <span class="text-slate-200">{{ selectedInstagramUser.session_id_added_at ? new Date(selectedInstagramUser.session_id_added_at).toLocaleString() : "Unknown" }}</span>
                         </p>
-                        <p v-if="hasStaleCredentials(selectedInstagramUser)" class="text-amber-700">
-                            Credential warning: one or more credentials are older than 1 day.
+                        <p v-if="hasStaleCredentials(selectedInstagramUser)" class="text-amber-400 text-xs mt-1">
+                            ⚠ One or more credentials are older than 1 day.
                         </p>
                     </div>
 
-                    <section class="mt-6 border border-gray-200 rounded-xl p-4">
-                        <h3 class="text-sm font-semibold text-gray-800">Instagram API Usage</h3>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Grouped by category and caller for this account.
-                        </p>
+                    <!-- API Usage section -->
+                    <section class="mt-6 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]">
+                        <h3 class="text-sm font-semibold text-slate-200">Instagram API Usage</h3>
+                        <p class="text-xs text-slate-500 mt-1">Grouped by category and caller for this account.</p>
 
-                        <p v-if="apiUsageLoading" class="text-sm text-gray-500 mt-3">Loading usage metrics…</p>
-                        <p v-else-if="apiUsageError" class="text-sm text-rose-600 mt-3">{{ apiUsageError }}</p>
+                        <p v-if="apiUsageLoading" class="text-sm text-slate-400 mt-3">Loading usage metrics…</p>
+                        <p v-else-if="apiUsageError" class="text-sm text-rose-400 mt-3">{{ apiUsageError }}</p>
 
                         <div v-else-if="selectedApiUsage" class="mt-4">
                             <div class="grid grid-cols-2 gap-3 mb-4">
-                                <div class="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">All time</p>
-                                    <p class="text-sm font-semibold text-gray-900">
+                                <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">All time</p>
+                                    <p class="text-sm font-semibold text-slate-100 mt-0.5">
                                         {{ selectedApiUsage.all_time_count.toLocaleString() }} calls
                                     </p>
                                 </div>
-                                <div class="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2">
-                                    <p class="text-xs text-gray-500 uppercase tracking-wide">Last 24h</p>
-                                    <p class="text-sm font-semibold text-gray-900">
+                                <div class="rounded-xl bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                    <p class="text-xs text-slate-500 uppercase tracking-wide">Last 24h</p>
+                                    <p class="text-sm font-semibold text-slate-100 mt-0.5">
                                         {{ selectedApiUsage.last_24h_count.toLocaleString() }} calls
                                     </p>
                                 </div>
                             </div>
 
-                            <div v-if="selectedApiUsage.categories.length" class="space-y-3">
+                            <div v-if="selectedApiUsage.categories.length" class="space-y-2">
                                 <div
                                     v-for="category in selectedApiUsage.categories"
                                     :key="category.category"
-                                    class="rounded-lg border border-gray-200 p-3"
+                                    class="rounded-xl border border-white/[0.06] p-3 bg-white/[0.02]"
                                 >
                                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                                        <p class="text-sm font-semibold text-gray-800">{{ category.category }}</p>
-                                        <p class="text-xs text-gray-500">
+                                        <p class="text-sm font-semibold text-slate-200">{{ category.category }}</p>
+                                        <p class="text-xs text-slate-500">
                                             {{ category.all_time_count.toLocaleString() }} total · {{ category.last_24h_count.toLocaleString() }} in 24h
                                         </p>
                                     </div>
-                                    <div class="mt-2 space-y-1" v-if="category.callers.length">
+                                    <div class="mt-1.5 space-y-1" v-if="category.callers.length">
                                         <p
                                             v-for="caller in category.callers"
                                             :key="`${caller.caller_service}:${caller.caller_method}`"
-                                            class="text-xs text-gray-600"
+                                            class="text-xs text-slate-500"
                                         >
-                                            {{ caller.caller_service }}.{{ caller.caller_method }}
+                                            <span class="text-slate-400">{{ caller.caller_service }}.{{ caller.caller_method }}</span>
                                             — {{ caller.all_time_count.toLocaleString() }} total, {{ caller.last_24h_count.toLocaleString() }} in 24h
                                         </p>
                                     </div>
                                 </div>
                             </div>
-
-                            <p v-else class="text-sm text-gray-500">No tracked API calls yet for this account.</p>
+                            <p v-else class="text-sm text-slate-500">No tracked API calls yet.</p>
                         </div>
-                        <p v-else class="text-sm text-gray-500 mt-3">No tracked API calls yet for this account.</p>
+                        <p v-else class="text-sm text-slate-500 mt-3">No tracked API calls yet.</p>
                     </section>
 
-                    <form class="mt-6 space-y-3 border border-gray-200 rounded-xl p-4" @submit.prevent="submitInstagramUserEdits()">
-                        <h3 class="text-sm font-semibold text-gray-800">Update Account Details</h3>
+                    <!-- Update form -->
+                    <form class="mt-5 space-y-3 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]" @submit.prevent="submitInstagramUserEdits()">
+                        <h3 class="text-sm font-semibold text-slate-200">Update Account Details</h3>
                         <input
                             v-model="accountUpdateForm.display_name"
                             placeholder="Display name"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            class="input-dark"
                         />
                         <textarea
                             v-model="accountUpdateForm.cookie_string"
                             placeholder="Paste cookie string here (must include sessionid and ds_user_id)"
                             rows="4"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                            class="input-dark"
                         />
-                        <div v-if="parsedCookiePreview" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs">
-                            <p class="font-semibold text-gray-700 mb-1.5">Cookie preview</p>
-                            <div class="grid gap-1">
+                        <!-- Cookie preview -->
+                        <div v-if="parsedCookiePreview" class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs">
+                            <p class="font-semibold text-slate-300 mb-2">Cookie preview</p>
+                            <div class="grid gap-1.5">
                                 <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-gray-500">sessionid</span>
-                                    <span :class="parsedCookiePreview.sessionid ? 'text-gray-900 break-all' : 'text-rose-500 italic'">{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
+                                    <span class="w-24 shrink-0 text-slate-500">sessionid</span>
+                                    <span :class="parsedCookiePreview.sessionid ? 'text-slate-200 break-all' : 'text-rose-400 italic'">{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
                                 </div>
                                 <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-gray-500">ds_user_id</span>
-                                    <span :class="parsedCookiePreview.ds_user_id ? 'text-gray-900 break-all' : 'text-rose-500 italic'">{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
+                                    <span class="w-24 shrink-0 text-slate-500">ds_user_id</span>
+                                    <span :class="parsedCookiePreview.ds_user_id ? 'text-slate-200 break-all' : 'text-rose-400 italic'">{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
                                 </div>
                                 <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-gray-500">csrftoken</span>
-                                    <span :class="parsedCookiePreview.csrftoken ? 'text-gray-900 break-all' : 'text-amber-600 italic'">{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
+                                    <span class="w-24 shrink-0 text-slate-500">csrftoken</span>
+                                    <span :class="parsedCookiePreview.csrftoken ? 'text-slate-200 break-all' : 'text-amber-400 italic'">{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
                                 </div>
                             </div>
                         </div>
                         <button
                             :disabled="saveInstagramUserEditsPending"
-                            class="w-full bg-gray-800 text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-black disabled:opacity-50"
+                            class="btn-ghost w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
                         >
-                            {{ saveInstagramUserEditsPending ? "Saving updates…" : "Save Updates" }}
+                            {{ saveInstagramUserEditsPending ? "Saving…" : "Save Updates" }}
                         </button>
-                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-700">{{ accountUpdateMessage }}</p>
-                        <p v-if="saveInstagramUserEditsError" class="text-sm text-rose-600">
-                            Could not update account details. Check cookie content and try again.
+                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-400">{{ accountUpdateMessage }}</p>
+                        <p v-if="saveInstagramUserEditsError" class="text-sm text-rose-400">
+                            Could not update account. Check cookie content and try again.
                         </p>
                     </form>
 
-                    <div class="mt-6 flex gap-2">
+                    <div class="mt-5 flex gap-2">
                         <button
                             :disabled="switchPending"
                             @click="switchInstagramUser(selectedInstagramUser.instagram_user_id)"
-                            class="px-4 py-2 text-sm rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+                            class="btn-violet rounded-lg px-4 py-2 text-sm font-semibold"
                         >
                             Set Active
                         </button>
                         <button
                             :disabled="removePending"
                             @click="removeInstagramUser(selectedInstagramUser.instagram_user_id)"
-                            class="px-4 py-2 text-sm rounded bg-rose-50 text-rose-700 hover:bg-rose-100 disabled:opacity-50"
+                            class="btn-danger rounded-lg px-4 py-2 text-sm font-semibold"
                         >
-                            Delete
+                            Delete Account
                         </button>
                     </div>
                 </div>
 
                 <div
                     v-if="!activeInstagramUser && currentView !== 'admin' && currentView !== 'details'"
-                    class="text-sm text-gray-500"
+                    class="text-sm text-slate-500 text-center py-20"
                 >
-                    Select or create an instagram user from the Admin page first.
+                    Select or create an Instagram account from the Admin page first.
                 </div>
             </main>
         </template>
+        </div>
     </div>
 </template>

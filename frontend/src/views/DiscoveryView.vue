@@ -338,10 +338,10 @@ async function submitFeedback() {
 </script>
 
 <template>
-    <section class="space-y-5">
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-            <h2 class="text-lg font-bold text-gray-900">Discovery</h2>
-            <p class="text-sm text-gray-500 mt-1">
+    <section class="space-y-5 fade-in">
+        <div class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6">
+            <h2 class="text-xl font-bold font-display text-gradient">Discovery</h2>
+            <p class="text-sm text-slate-400 mt-1">
                 Look up a user and inspect their current follow-back prediction
                 details.
             </p>
@@ -353,16 +353,16 @@ async function submitFeedback() {
                 <input
                     v-model="usernameInput"
                     placeholder="instagram username"
-                    class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                    class="input-dark"
                 />
                 <button
                     :disabled="isLoading"
-                    class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                    class="btn-violet px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
                 >
                     {{ isLoading ? "Loading..." : "Open Discovery" }}
                 </button>
             </form>
-            <p class="text-xs text-gray-500 mt-2">
+            <p class="text-xs text-slate-500 mt-2">
                 Active profile: {{ props.profileId }}
             </p>
         </div>
@@ -393,7 +393,7 @@ async function submitFeedback() {
 
         <div
             v-if="prediction"
-            class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4"
+            class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 p-6 space-y-4"
         >
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div class="flex items-center gap-3 min-w-0">
@@ -405,7 +405,7 @@ async function submitFeedback() {
                         class="w-14 h-14"
                     />
                     <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-wide text-gray-500">
+                        <p class="text-xs uppercase tracking-wide text-slate-500">
                             Target
                         </p>
                         <a
@@ -413,20 +413,20 @@ async function submitFeedback() {
                             :href="instagramProfileUrl"
                             target="_blank"
                             rel="noopener noreferrer"
-                            class="text-lg font-bold text-indigo-700 hover:text-indigo-900 hover:underline truncate inline-block max-w-full"
+                            class="text-lg font-bold text-violet-400 hover:text-violet-300 hover:underline truncate inline-block max-w-full"
                         >
                             @{{ prediction.target_username || "unknown" }} ↗
                         </a>
-                        <p v-else class="text-lg font-bold text-gray-900">
+                        <p v-else class="text-lg font-bold text-slate-100">
                             @{{ prediction.target_username || "unknown" }}
                         </p>
-                        <p class="text-[10px] text-gray-400 mt-0.5">
+                        <p class="text-[10px] text-slate-500 mt-0.5">
                             user id: {{ prediction.target_profile_id || "--" }}
                         </p>
                     </div>
                 </div>
                 <div class="text-right">
-                    <p class="text-xs uppercase tracking-wide text-gray-500">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">
                         Status
                     </p>
                     <PredictionStatusBadge :status="prediction.status" />
@@ -434,8 +434,8 @@ async function submitFeedback() {
             </div>
 
             <div class="grid lg:grid-cols-[1.1fr,0.9fr] gap-4 items-start">
-                <div class="rounded-2xl border border-gray-100 p-4">
-                    <p class="text-xs uppercase tracking-wide text-gray-500">
+                <div class="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">
                         Prediction snapshot
                     </p>
                     <div class="mt-3">
@@ -448,12 +448,12 @@ async function submitFeedback() {
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button
                             :disabled="isLoading"
-                            class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-50"
+                            class="btn-violet px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50"
                             @click="refreshPrediction"
                         >
                             Refresh data
                         </button>
-                        <p class="text-xs text-gray-500 self-center">
+                        <p class="text-xs text-slate-500 self-center">
                             Current:
                             {{ prediction.outcome_status || "pending" }}
                         </p>
@@ -463,13 +463,13 @@ async function submitFeedback() {
                     </div>
                 </div>
 
-                <div class="rounded-2xl border border-gray-100 p-4 space-y-3">
-                    <p class="text-xs uppercase tracking-wide text-gray-500">
+                <div class="rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 space-y-3">
+                    <p class="text-xs uppercase tracking-wide text-slate-500">
                         Target details
                     </p>
                     <div
                         v-if="targetProfile"
-                        class="grid sm:grid-cols-2 gap-3 text-sm text-gray-700"
+                        class="grid sm:grid-cols-2 gap-3 text-sm text-slate-300"
                     >
                         <p>
                             <span class="font-semibold">Full name:</span>
@@ -496,85 +496,85 @@ async function submitFeedback() {
                             {{ targetProfile.media_count ?? "--" }}
                         </p>
                     </div>
-                    <p v-else class="text-sm text-gray-500">
+                    <p v-else class="text-sm text-slate-500">
                         Detailed target metadata is still loading. If this user
                         has not been refreshed yet, wait for the task to finish.
                     </p>
 
                     <div
                         v-if="relationshipCache"
-                        class="space-y-3 pt-2 border-t border-gray-100"
+                        class="space-y-3 pt-2 border-t border-white/[0.07]"
                     >
-                        <p class="text-xs uppercase tracking-wide text-gray-500">
+                        <p class="text-xs uppercase tracking-wide text-slate-500">
                             Relationship list cache
                         </p>
 
                         <div class="grid sm:grid-cols-2 gap-3 text-sm">
-                            <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/70">
+                            <div class="rounded-xl border border-white/[0.07] p-3 bg-white/[0.02]">
                                 <div class="flex items-center justify-between gap-2">
-                                    <p class="font-semibold text-gray-800">Followers list</p>
+                                    <p class="font-semibold text-slate-200">Followers list</p>
                                     <span
                                         v-if="relationshipCache.followers.is_outdated"
-                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"
+                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25"
                                     >
                                         Outdated
                                     </span>
                                 </div>
-                                <p class="text-gray-600 mt-1">
+                                <p class="text-slate-400 mt-1">
                                     {{ formatDaysSince(relationshipCache.followers.days_since_fetch) }}
                                 </p>
-                                <p class="text-xs text-gray-500 mt-1">
+                                <p class="text-xs text-slate-500 mt-1">
                                     Last fetched: {{ formatFetchedAt(relationshipCache.followers.fetched_at) }}
                                 </p>
-                                <p class="text-xs text-gray-500">
+                                <p class="text-xs text-slate-500">
                                     Count snapshot: {{ relationshipCache.followers.last_known_count ?? "--" }}
                                     · Current known: {{ relationshipCache.followers.current_count ?? "--" }}
                                 </p>
                                 <button
                                     :disabled="isLoading || listRefreshPending.followers"
-                                    class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                    class="btn-violet mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
                                     @click="refreshRelationshipList('followers')"
                                 >
                                     {{ listRefreshPending.followers ? "Refreshing..." : "Refresh followers" }}
                                 </button>
                                 <p
                                     v-if="listRefreshError.followers"
-                                    class="text-xs text-rose-600 mt-1"
+                                    class="text-xs text-rose-400 mt-1"
                                 >
                                     {{ listRefreshError.followers }}
                                 </p>
                             </div>
 
-                            <div class="rounded-xl border border-gray-200 p-3 bg-gray-50/70">
+                            <div class="rounded-xl border border-white/[0.07] p-3 bg-white/[0.02]">
                                 <div class="flex items-center justify-between gap-2">
-                                    <p class="font-semibold text-gray-800">Following list</p>
+                                    <p class="font-semibold text-slate-200">Following list</p>
                                     <span
                                         v-if="relationshipCache.following.is_outdated"
-                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800"
+                                        class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25"
                                     >
                                         Outdated
                                     </span>
                                 </div>
-                                <p class="text-gray-600 mt-1">
+                                <p class="text-slate-400 mt-1">
                                     {{ formatDaysSince(relationshipCache.following.days_since_fetch) }}
                                 </p>
-                                <p class="text-xs text-gray-500 mt-1">
+                                <p class="text-xs text-slate-500 mt-1">
                                     Last fetched: {{ formatFetchedAt(relationshipCache.following.fetched_at) }}
                                 </p>
-                                <p class="text-xs text-gray-500">
+                                <p class="text-xs text-slate-500">
                                     Count snapshot: {{ relationshipCache.following.last_known_count ?? "--" }}
                                     · Current known: {{ relationshipCache.following.current_count ?? "--" }}
                                 </p>
                                 <button
                                     :disabled="isLoading || listRefreshPending.following"
-                                    class="mt-2 px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                                    class="btn-violet mt-2 px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50"
                                     @click="refreshRelationshipList('following')"
                                 >
                                     {{ listRefreshPending.following ? "Refreshing..." : "Refresh following" }}
                                 </button>
                                 <p
                                     v-if="listRefreshError.following"
-                                    class="text-xs text-rose-600 mt-1"
+                                    class="text-xs text-rose-400 mt-1"
                                 >
                                     {{ listRefreshError.following }}
                                 </p>
@@ -585,42 +585,42 @@ async function submitFeedback() {
             </div>
 
             <div>
-                <h3 class="text-sm font-semibold text-gray-800 mb-2">
+                <h3 class="text-sm font-semibold text-slate-200 mb-2">
                     Reasons
                 </h3>
                 <ul
                     v-if="reasons.length"
-                    class="space-y-1 text-sm text-gray-700 list-disc ml-5"
+                    class="space-y-1 text-sm text-slate-300 list-disc ml-5"
                 >
                     <li v-for="reason in reasons" :key="reason">
                         {{ reason }}
                     </li>
                 </ul>
-                <p v-else class="text-sm text-gray-500">
+                <p v-else class="text-sm text-slate-500">
                     No reasons are available yet. This can happen while refresh
                     is still running.
                 </p>
             </div>
 
             <!-- Outcome feedback section -->
-            <div class="pt-3 border-t border-gray-100">
+            <div class="pt-3 border-t border-white/[0.07]">
                 <!-- Already assessed: show status badge + re-assess link -->
                 <div
                     v-if="!feedbackMode && !feedbackReassessing && prediction.outcome_status && prediction.outcome_status !== 'pending'"
-                    class="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
+                    class="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
                 >
                     <span class="text-2xl">{{ prediction.outcome_status === 'correct' ? '✅' : '❌' }}</span>
                     <div class="flex-1">
-                        <p class="text-sm font-semibold text-gray-800">
+                        <p class="text-sm font-semibold text-slate-200">
                             Outcome recorded:
-                            <span :class="prediction.outcome_status === 'correct' ? 'text-emerald-700' : 'text-rose-700'">
+                            <span :class="prediction.outcome_status === 'correct' ? 'text-emerald-400' : 'text-rose-400'">
                                 {{ prediction.outcome_status }}
                             </span>
                         </p>
-                        <p class="text-xs text-gray-500">Feedback saved · thank you!</p>
+                        <p class="text-xs text-slate-500">Feedback saved · thank you!</p>
                     </div>
                     <button
-                        class="text-xs text-gray-400 hover:text-indigo-600 underline"
+                        class="text-xs text-slate-500 hover:text-violet-400 underline"
                         @click="feedbackReassessing = true"
                     >
                         Re-assess
@@ -629,16 +629,16 @@ async function submitFeedback() {
 
                 <!-- Idle: primary action buttons -->
                 <div v-else-if="!feedbackMode" class="space-y-2">
-                    <p class="text-sm font-medium text-gray-700">Did this prediction come true?</p>
+                    <p class="text-sm font-medium text-slate-300">Did this prediction come true?</p>
                     <div class="flex gap-3">
                         <button
-                            class="flex-1 py-2.5 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-800 text-sm font-semibold hover:bg-emerald-100 hover:border-emerald-400 transition-all"
+                            class="flex-1 py-2.5 rounded-xl border-2 border-emerald-500/25 bg-emerald-500/10 text-emerald-300 text-sm font-semibold hover:bg-emerald-500/15 hover:border-emerald-400/50 transition-all"
                             @click="openFeedback('correct')"
                         >
                             ✅ Yes, it did
                         </button>
                         <button
-                            class="flex-1 py-2.5 rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-800 text-sm font-semibold hover:bg-rose-100 hover:border-rose-400 transition-all"
+                            class="flex-1 py-2.5 rounded-xl border-2 border-rose-500/25 bg-rose-500/10 text-rose-300 text-sm font-semibold hover:bg-rose-500/15 hover:border-rose-400/50 transition-all"
                             @click="openFeedback('wrong')"
                         >
                             ❌ No, it didn't
@@ -650,29 +650,29 @@ async function submitFeedback() {
                 <div v-else-if="feedbackMode === 'correct'" class="space-y-3">
                     <div class="flex items-center gap-2">
                         <span class="text-xl">🎯</span>
-                        <p class="text-base font-bold text-gray-900">Prediction was correct!</p>
-                        <button class="ml-auto text-xs text-gray-400 hover:text-gray-600" @click="cancelFeedback">✕ cancel</button>
+                        <p class="text-base font-bold text-slate-100">Prediction was correct!</p>
+                        <button class="ml-auto text-xs text-slate-500 hover:text-slate-300" @click="cancelFeedback">✕ cancel</button>
                     </div>
-                    <p class="text-sm text-gray-600">
+                    <p class="text-sm text-slate-400">
                         Model predicted <strong>{{ probabilityLabel }}</strong>. How accurate was that estimate?
                     </p>
                     <div class="grid grid-cols-3 gap-2">
                         <button
-                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'higher' ? 'bg-emerald-100 border-emerald-500 text-emerald-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300']"
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'higher' ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300' : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-emerald-400/40']"
                             @click="feedbackDirection = 'higher'"
                         >
                             📈 Underestimated<br>
                             <span class="font-normal">Should be higher</span>
                         </button>
                         <button
-                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === null ? 'bg-indigo-50 border-indigo-400 text-indigo-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-indigo-300']"
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === null ? 'bg-violet-500/15 border-violet-400/60 text-violet-300' : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-violet-400/40']"
                             @click="feedbackDirection = null"
                         >
                             🎯 Spot on!<br>
                             <span class="font-normal">Accurate estimate</span>
                         </button>
                         <button
-                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'lower' ? 'bg-amber-100 border-amber-500 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-amber-300']"
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'lower' ? 'bg-amber-500/15 border-amber-400/60 text-amber-300' : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-amber-400/40']"
                             @click="feedbackDirection = 'lower'"
                         >
                             📉 Overestimated<br>
@@ -680,7 +680,7 @@ async function submitFeedback() {
                         </button>
                     </div>
                     <div v-if="feedbackDirection" class="flex items-center gap-2">
-                        <label class="text-xs text-gray-600 shrink-0">Your estimate:</label>
+                        <label class="text-xs text-slate-400 shrink-0">Your estimate:</label>
                         <input
                             v-model="feedbackExpectedPct"
                             type="number"
@@ -688,15 +688,15 @@ async function submitFeedback() {
                             max="100"
                             step="1"
                             placeholder="e.g. 85"
-                            class="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                            class="w-20 px-2 py-1 text-sm rounded-lg bg-slate-900 border border-slate-700 text-slate-200"
                         />
-                        <span class="text-xs text-gray-500">% (optional)</span>
+                        <span class="text-xs text-slate-500">% (optional)</span>
                     </div>
                     <textarea
                         v-model="feedbackNotes"
                         placeholder="Optional notes..."
                         rows="2"
-                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none"
+                        class="w-full text-sm rounded-lg px-3 py-2 resize-none bg-slate-900 border border-slate-700 text-slate-200"
                     />
                     <div class="flex gap-2">
                         <button
@@ -707,7 +707,7 @@ async function submitFeedback() {
                             {{ feedbackSubmitting ? 'Saving...' : 'Confirm Correct ✓' }}
                         </button>
                         <button
-                            class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm hover:bg-gray-200"
+                            class="btn-ghost px-4 py-2 rounded-xl text-sm"
                             @click="cancelFeedback"
                         >
                             Cancel
@@ -719,32 +719,32 @@ async function submitFeedback() {
                 <div v-else-if="feedbackMode === 'wrong'" class="space-y-3">
                     <div class="flex items-center gap-2">
                         <span class="text-xl">🤔</span>
-                        <p class="text-base font-bold text-gray-900">What went wrong?</p>
-                        <button class="ml-auto text-xs text-gray-400 hover:text-gray-600" @click="cancelFeedback">✕ cancel</button>
+                        <p class="text-base font-bold text-slate-100">What went wrong?</p>
+                        <button class="ml-auto text-xs text-slate-500 hover:text-slate-300" @click="cancelFeedback">✕ cancel</button>
                     </div>
-                    <p class="text-sm text-gray-600">
+                    <p class="text-sm text-slate-400">
                         Model predicted <strong>{{ probabilityLabel }}</strong>. What was the real outcome?
                     </p>
                     <div class="grid grid-cols-2 gap-3">
                         <button
-                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'higher' ? 'bg-emerald-100 border-emerald-500 text-emerald-800 scale-105' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50']"
+                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'higher' ? 'bg-emerald-500/15 border-emerald-400/60 text-emerald-300 scale-105' : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-emerald-400/40 hover:bg-emerald-500/10']"
                             @click="feedbackDirection = 'higher'"
                         >
                             <span class="text-2xl">📈</span>
                             <span>Higher</span>
-                            <span class="text-xs font-normal text-gray-500">Model underestimated</span>
+                            <span class="text-xs font-normal text-slate-500">Model underestimated</span>
                         </button>
                         <button
-                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'lower' ? 'bg-rose-100 border-rose-500 text-rose-800 scale-105' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-rose-300 hover:bg-rose-50']"
+                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'lower' ? 'bg-rose-500/15 border-rose-400/60 text-rose-300 scale-105' : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:border-rose-400/40 hover:bg-rose-500/10']"
                             @click="feedbackDirection = 'lower'"
                         >
                             <span class="text-2xl">📉</span>
                             <span>Lower</span>
-                            <span class="text-xs font-normal text-gray-500">Model overestimated</span>
+                            <span class="text-xs font-normal text-slate-500">Model overestimated</span>
                         </button>
                     </div>
                     <div class="flex items-center gap-2">
-                        <label class="text-xs text-gray-600 shrink-0">Your estimate:</label>
+                        <label class="text-xs text-slate-400 shrink-0">Your estimate:</label>
                         <input
                             v-model="feedbackExpectedPct"
                             type="number"
@@ -752,15 +752,15 @@ async function submitFeedback() {
                             max="100"
                             step="1"
                             placeholder="e.g. 20"
-                            class="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                            class="w-20 px-2 py-1 text-sm rounded-lg bg-slate-900 border border-slate-700 text-slate-200"
                         />
-                        <span class="text-xs text-gray-500">% (optional)</span>
+                        <span class="text-xs text-slate-500">% (optional)</span>
                     </div>
                     <textarea
                         v-model="feedbackNotes"
                         placeholder="Optional notes (e.g. 'User never follows anyone back')"
                         rows="2"
-                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none"
+                        class="w-full text-sm rounded-lg px-3 py-2 resize-none bg-slate-900 border border-slate-700 text-slate-200"
                     />
                     <div class="flex gap-2">
                         <button
@@ -771,7 +771,7 @@ async function submitFeedback() {
                             {{ feedbackSubmitting ? 'Saving...' : 'Submit Feedback' }}
                         </button>
                         <button
-                            class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm hover:bg-gray-200"
+                            class="btn-ghost px-4 py-2 rounded-xl text-sm"
                             @click="cancelFeedback"
                         >
                             Cancel

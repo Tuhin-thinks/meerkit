@@ -10,13 +10,13 @@ const props = defineProps<{
 const panelClass = computed(() => {
     switch (props.tone) {
         case "info":
-            return "bg-blue-50 border-blue-200 text-blue-800";
+            return "bg-blue-500/10 border-blue-500/25 text-blue-300";
         case "warning":
-            return "bg-amber-50 border-amber-200 text-amber-800";
+            return "bg-amber-500/10 border-amber-500/25 text-amber-300";
         case "error":
-            return "bg-rose-50 border-rose-200 text-rose-700";
+            return "bg-rose-500/10 border-rose-500/25 text-rose-300";
         default:
-            return "bg-gray-50 border-gray-200 text-gray-700";
+            return "bg-slate-800/60 border-slate-700 text-slate-300";
     }
 });
 </script>
