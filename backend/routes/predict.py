@@ -154,8 +154,20 @@ def patch_prediction_feedback(prediction_id: str):
     assessment_status = (payload.get("assessment_status") or "").strip()
     notes = payload.get("notes")
     observed_at = payload.get("observed_at")
+    expected_direction = payload.get("expected_direction")
+    raw_expected_value = payload.get("expected_value")
     if assessment_status not in {"correct", "wrong", "pending_review", "ignored"}:
         return jsonify({"error": "Invalid assessment_status"}), 400
+    if expected_direction is not None and expected_direction not in {"higher", "lower"}:
+        return jsonify({"error": "expected_direction must be 'higher' or 'lower'"}), 400
+    expected_value: float | None = None
+    if raw_expected_value is not None:
+        try:
+            expected_value = float(raw_expected_value)
+            if not (0.0 <= expected_value <= 1.0):
+                return jsonify({"error": "expected_value must be between 0 and 1"}), 400
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid expected_value"}), 400
 
     try:
         assessment = account_handler.record_prediction_feedback(
@@ -163,6 +175,8 @@ def patch_prediction_feedback(prediction_id: str):
             assessment_status=assessment_status,
             notes=notes,
             observed_at=observed_at,
+            expected_direction=expected_direction,
+            expected_value=expected_value,
         )
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 404

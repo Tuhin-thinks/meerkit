@@ -66,6 +66,8 @@ export interface PredictionFeedbackPayload {
   assessment_status: 'correct' | 'wrong' | 'pending_review' | 'ignored'
   notes?: string
   observed_at?: string
+  expected_direction?: 'higher' | 'lower'
+  expected_value?: number
 }
 
 export interface RelationshipCacheStatusItem {

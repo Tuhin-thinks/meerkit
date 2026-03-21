@@ -9,6 +9,7 @@ import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
 import type {
     PredictionDetailResponse,
+    PredictionFeedbackPayload,
     PredictionRecord,
     PredictionTask,
     RelationshipCacheStatusResponse,
@@ -37,6 +38,13 @@ const listRefreshError = ref({
     followers: "",
     following: "",
 });
+
+const feedbackMode = ref<"correct" | "wrong" | null>(null);
+const feedbackDirection = ref<"higher" | "lower" | null>(null);
+const feedbackExpectedPct = ref("");
+const feedbackNotes = ref("");
+const feedbackSubmitting = ref(false);
+const feedbackReassessing = ref(false);
 
 let disposed = false;
 
@@ -287,6 +295,45 @@ async function markFeedback(status: "correct" | "wrong") {
         ...prediction.value,
         outcome_status: status,
     };
+}
+
+function openFeedback(mode: "correct" | "wrong") {
+    feedbackMode.value = mode;
+    feedbackReassessing.value = false;
+    feedbackDirection.value = null;
+    feedbackExpectedPct.value = "";
+    feedbackNotes.value = "";
+}
+
+function cancelFeedback() {
+    feedbackMode.value = null;
+    feedbackReassessing.value = false;
+}
+
+async function submitFeedback() {
+    if (!prediction.value || !feedbackMode.value) {
+        return;
+    }
+    feedbackSubmitting.value = true;
+    try {
+        const expectedPct = parseFloat(feedbackExpectedPct.value);
+        const payload: PredictionFeedbackPayload = {
+            assessment_status: feedbackMode.value,
+            ...(feedbackNotes.value.trim() ? { notes: feedbackNotes.value.trim() } : {}),
+            ...(feedbackDirection.value ? { expected_direction: feedbackDirection.value } : {}),
+            ...(!isNaN(expectedPct) && expectedPct >= 0 && expectedPct <= 100
+                ? { expected_value: expectedPct / 100 }
+                : {}),
+        };
+        await api.setPredictionFeedback(prediction.value.prediction_id, payload);
+        prediction.value = {
+            ...prediction.value,
+            outcome_status: feedbackMode.value,
+        };
+        feedbackMode.value = null;
+    } finally {
+        feedbackSubmitting.value = false;
+    }
 }
 </script>
 
@@ -555,25 +602,182 @@ async function markFeedback(status: "correct" | "wrong") {
                 </p>
             </div>
 
-            <div
-                class="pt-2 border-t border-gray-100 flex flex-wrap gap-2 items-center"
-            >
-                <p class="text-sm text-gray-600">Mark outcome:</p>
-                <button
-                    class="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 text-sm font-medium hover:bg-emerald-200"
-                    @click="markFeedback('correct')"
+            <!-- Outcome feedback section -->
+            <div class="pt-3 border-t border-gray-100">
+                <!-- Already assessed: show status badge + re-assess link -->
+                <div
+                    v-if="!feedbackMode && !feedbackReassessing && prediction.outcome_status && prediction.outcome_status !== 'pending'"
+                    class="flex items-center gap-3 p-3 rounded-xl bg-gray-50"
                 >
-                    Correct
-                </button>
-                <button
-                    class="px-3 py-1.5 rounded-lg bg-rose-100 text-rose-800 text-sm font-medium hover:bg-rose-200"
-                    @click="markFeedback('wrong')"
-                >
-                    Wrong
-                </button>
-                <p class="text-xs text-gray-500">
-                    Current: {{ prediction.outcome_status || "pending" }}
-                </p>
+                    <span class="text-2xl">{{ prediction.outcome_status === 'correct' ? '✅' : '❌' }}</span>
+                    <div class="flex-1">
+                        <p class="text-sm font-semibold text-gray-800">
+                            Outcome recorded:
+                            <span :class="prediction.outcome_status === 'correct' ? 'text-emerald-700' : 'text-rose-700'">
+                                {{ prediction.outcome_status }}
+                            </span>
+                        </p>
+                        <p class="text-xs text-gray-500">Feedback saved · thank you!</p>
+                    </div>
+                    <button
+                        class="text-xs text-gray-400 hover:text-indigo-600 underline"
+                        @click="feedbackReassessing = true"
+                    >
+                        Re-assess
+                    </button>
+                </div>
+
+                <!-- Idle: primary action buttons -->
+                <div v-else-if="!feedbackMode" class="space-y-2">
+                    <p class="text-sm font-medium text-gray-700">Did this prediction come true?</p>
+                    <div class="flex gap-3">
+                        <button
+                            class="flex-1 py-2.5 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-800 text-sm font-semibold hover:bg-emerald-100 hover:border-emerald-400 transition-all"
+                            @click="openFeedback('correct')"
+                        >
+                            ✅ Yes, it did
+                        </button>
+                        <button
+                            class="flex-1 py-2.5 rounded-xl border-2 border-rose-200 bg-rose-50 text-rose-800 text-sm font-semibold hover:bg-rose-100 hover:border-rose-400 transition-all"
+                            @click="openFeedback('wrong')"
+                        >
+                            ❌ No, it didn't
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Correct feedback form -->
+                <div v-else-if="feedbackMode === 'correct'" class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🎯</span>
+                        <p class="text-base font-bold text-gray-900">Prediction was correct!</p>
+                        <button class="ml-auto text-xs text-gray-400 hover:text-gray-600" @click="cancelFeedback">✕ cancel</button>
+                    </div>
+                    <p class="text-sm text-gray-600">
+                        Model predicted <strong>{{ probabilityLabel }}</strong>. How accurate was that estimate?
+                    </p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'higher' ? 'bg-emerald-100 border-emerald-500 text-emerald-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300']"
+                            @click="feedbackDirection = 'higher'"
+                        >
+                            📈 Underestimated<br>
+                            <span class="font-normal">Should be higher</span>
+                        </button>
+                        <button
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === null ? 'bg-indigo-50 border-indigo-400 text-indigo-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-indigo-300']"
+                            @click="feedbackDirection = null"
+                        >
+                            🎯 Spot on!<br>
+                            <span class="font-normal">Accurate estimate</span>
+                        </button>
+                        <button
+                            :class="['py-3 rounded-xl border-2 text-xs font-semibold transition-all text-center', feedbackDirection === 'lower' ? 'bg-amber-100 border-amber-500 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-amber-300']"
+                            @click="feedbackDirection = 'lower'"
+                        >
+                            📉 Overestimated<br>
+                            <span class="font-normal">Should be lower</span>
+                        </button>
+                    </div>
+                    <div v-if="feedbackDirection" class="flex items-center gap-2">
+                        <label class="text-xs text-gray-600 shrink-0">Your estimate:</label>
+                        <input
+                            v-model="feedbackExpectedPct"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            placeholder="e.g. 85"
+                            class="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                        />
+                        <span class="text-xs text-gray-500">% (optional)</span>
+                    </div>
+                    <textarea
+                        v-model="feedbackNotes"
+                        placeholder="Optional notes..."
+                        rows="2"
+                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none"
+                    />
+                    <div class="flex gap-2">
+                        <button
+                            :disabled="feedbackSubmitting"
+                            class="flex-1 py-2 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 disabled:opacity-50 transition-all"
+                            @click="submitFeedback"
+                        >
+                            {{ feedbackSubmitting ? 'Saving...' : 'Confirm Correct ✓' }}
+                        </button>
+                        <button
+                            class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm hover:bg-gray-200"
+                            @click="cancelFeedback"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Wrong feedback form -->
+                <div v-else-if="feedbackMode === 'wrong'" class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🤔</span>
+                        <p class="text-base font-bold text-gray-900">What went wrong?</p>
+                        <button class="ml-auto text-xs text-gray-400 hover:text-gray-600" @click="cancelFeedback">✕ cancel</button>
+                    </div>
+                    <p class="text-sm text-gray-600">
+                        Model predicted <strong>{{ probabilityLabel }}</strong>. What was the real outcome?
+                    </p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button
+                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'higher' ? 'bg-emerald-100 border-emerald-500 text-emerald-800 scale-105' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-emerald-300 hover:bg-emerald-50']"
+                            @click="feedbackDirection = 'higher'"
+                        >
+                            <span class="text-2xl">📈</span>
+                            <span>Higher</span>
+                            <span class="text-xs font-normal text-gray-500">Model underestimated</span>
+                        </button>
+                        <button
+                            :class="['py-4 rounded-xl border-2 text-sm font-semibold transition-all flex flex-col items-center gap-1', feedbackDirection === 'lower' ? 'bg-rose-100 border-rose-500 text-rose-800 scale-105' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-rose-300 hover:bg-rose-50']"
+                            @click="feedbackDirection = 'lower'"
+                        >
+                            <span class="text-2xl">📉</span>
+                            <span>Lower</span>
+                            <span class="text-xs font-normal text-gray-500">Model overestimated</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <label class="text-xs text-gray-600 shrink-0">Your estimate:</label>
+                        <input
+                            v-model="feedbackExpectedPct"
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            placeholder="e.g. 20"
+                            class="w-20 px-2 py-1 text-sm border border-gray-300 rounded-lg"
+                        />
+                        <span class="text-xs text-gray-500">% (optional)</span>
+                    </div>
+                    <textarea
+                        v-model="feedbackNotes"
+                        placeholder="Optional notes (e.g. 'User never follows anyone back')"
+                        rows="2"
+                        class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none"
+                    />
+                    <div class="flex gap-2">
+                        <button
+                            :disabled="feedbackSubmitting"
+                            class="flex-1 py-2 rounded-xl bg-rose-500 text-white font-semibold text-sm hover:bg-rose-600 disabled:opacity-50 transition-all"
+                            @click="submitFeedback"
+                        >
+                            {{ feedbackSubmitting ? 'Saving...' : 'Submit Feedback' }}
+                        </button>
+                        <button
+                            class="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-sm hover:bg-gray-200"
+                            @click="cancelFeedback"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </section>

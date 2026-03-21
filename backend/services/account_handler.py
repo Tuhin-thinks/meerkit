@@ -1060,10 +1060,21 @@ def record_prediction_feedback(
     notes: str | None = None,
     observed_at: str | None = None,
     source: str = "manual",
+    expected_direction: str | None = None,
+    expected_value: float | None = None,
 ) -> dict:
     prediction = db_service.get_prediction(prediction_id)
     if not prediction:
         raise ValueError("Prediction not found")
+
+    evidence: dict = {"prediction_type": prediction.get("prediction_type")}
+    actual_probability = prediction.get("probability")
+    if actual_probability is not None:
+        evidence["actual_probability"] = actual_probability
+    if expected_direction is not None:
+        evidence["expected_direction"] = expected_direction
+    if expected_value is not None:
+        evidence["expected_value"] = expected_value
 
     assessment = db_service.create_prediction_assessment(
         prediction_id=prediction_id,
@@ -1071,7 +1082,7 @@ def record_prediction_feedback(
         source=source,
         notes=notes,
         observed_at=observed_at,
-        evidence={"prediction_type": prediction.get("prediction_type")},
+        evidence=evidence,
     )
     db_service.update_prediction(
         prediction_id,
