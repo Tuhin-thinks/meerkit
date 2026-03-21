@@ -349,7 +349,7 @@ def test_get_active_task_bundle_marks_stale_running_task_as_error(monkeypatch):
         "error": "Prediction task became inactive after running for more than 5 minutes.",
         "completed_at": datetime.now().isoformat(),
     }
-    updated_predictions: list[tuple[str, str]] = []
+    updated_predictions: list[tuple[str, str | None]] = []
 
     monkeypatch.setattr(
         prediction_runner.db_service,
@@ -393,7 +393,7 @@ def test_get_task_status_marks_stale_running_task_as_error(monkeypatch):
         "error": "Prediction task became inactive after running for more than 5 minutes.",
         "completed_at": datetime.now().isoformat(),
     }
-    updated_predictions: list[tuple[str, str]] = []
+    updated_predictions: list[tuple[str, str | None]] = []
 
     monkeypatch.setattr(
         prediction_runner.db_service,
@@ -417,6 +417,50 @@ def test_get_task_status_marks_stale_running_task_as_error(monkeypatch):
 
     assert result == errored_task
     assert updated_predictions == [("pred_stale", "error")]
+
+
+def test_get_active_task_bundle_marks_stale_queued_task_as_error(monkeypatch):
+    stale_task = {
+        "task_id": "task_stale_queued",
+        "prediction_id": "pred_stale_queued",
+        "status": "queued",
+        "queued_at": (datetime.now() - timedelta(minutes=6)).isoformat(),
+        "started_at": None,
+    }
+    errored_task = {
+        **stale_task,
+        "status": "error",
+        "error": "Prediction task stayed queued for more than 5 minutes.",
+        "completed_at": datetime.now().isoformat(),
+    }
+    updated_predictions: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "get_latest_active_prediction_task",
+        lambda **kwargs: stale_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner,
+        "mark_task_error",
+        lambda task_id, error: errored_task,
+    )
+    monkeypatch.setattr(
+        prediction_runner.db_service,
+        "update_prediction",
+        lambda prediction_id, status=None, **kwargs: updated_predictions.append(
+            (prediction_id, status)
+        ),
+    )
+
+    result = prediction_runner.get_active_task_bundle(
+        app_user_id="app_test_user",
+        reference_profile_id="ig_123",
+        target_profile_id="target_123",
+    )
+
+    assert result is None
+    assert updated_predictions == [("pred_stale_queued", "error")]
 
 
 def test_compute_followback_chances_uses_historical_reference(monkeypatch):

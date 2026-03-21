@@ -4,6 +4,7 @@ from pathlib import Path
 
 import insta_interface as ii
 from backend.services.db_service import generate_scan_diff, store_scan_info
+from backend.services.instagram_gateway import instagram_gateway
 
 
 def compare_followers(
@@ -53,14 +54,21 @@ def main():
 
 
 def add_to_downloader_queue(
-    app_user_id: str, profile: list[ii.FollowerUserRecord]
+    app_user_id: str,
+    instagram_user_id: str,
+    profile: list[ii.FollowerUserRecord],
 ) -> None:
     """Add a follower's profile image URL to the downloader queue for async caching."""
     from backend.services.downloader import enqueue_image_download
 
     print(f"Enqueuing image download for {len(profile)} followers...")
     for follower in profile:
-        enqueue_image_download(app_user_id, follower.pk_id, follower.profile_pic_url)
+        enqueue_image_download(
+            app_user_id,
+            instagram_user_id,
+            follower.pk_id,
+            follower.profile_pic_url,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -109,9 +117,15 @@ def run_scan_for_api(
         user_id=reference_profile_id,
     )
     # followers = ii.get_current_followers(profile=profile, store_data=False)
-    followers = ii.get_current_followers_v2(profile=profile, store_data=False)
+    followers = instagram_gateway.get_current_followers_v2(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+        profile=profile,
+        caller_service="scan_flow",
+        caller_method="run_scan_for_api",
+    )
 
-    add_to_downloader_queue(app_user_id, followers)
+    add_to_downloader_queue(app_user_id, reference_profile_id, followers)
     latest_scan_id = store_scan_info(
         scan_id, reference_profile_id, app_user_id, followers
     )
@@ -130,7 +144,7 @@ def run_scan_for_api(
 
     # TODO: We may not need this in future.
     if prev_followers is not None:
-        add_to_downloader_queue(app_user_id, prev_followers)
+        add_to_downloader_queue(app_user_id, reference_profile_id, prev_followers)
 
     return {
         "scan_id": scan_id,
