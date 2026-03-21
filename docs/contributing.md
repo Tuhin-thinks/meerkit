@@ -1,6 +1,6 @@
 # Contributing
 
-Guidelines for contributing to insta-followers-tracker.
+Guidelines for contributing to meerkit.
 
 ## Code of Conduct
 
@@ -9,7 +9,7 @@ Be respectful, inclusive, and constructive in all interactions.
 ## Getting Started
 
 1. **Fork** the repository
-2. **Clone** your fork: `git clone https://github.com/tuhin-thinks/insta-followers-tracker.git`
+2. **Clone** your fork: `git clone https://github.com/Tuhin-thinks/meerkit.git`
 3. **Create a branch**: `git checkout -b feature/your-feature`
 4. **Make changes** following the guidelines below
 5. **Test** your changes thoroughly

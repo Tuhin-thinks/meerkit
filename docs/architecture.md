@@ -1,6 +1,6 @@
 # Architecture
 
-Overview of the insta-followers-tracker system design, data flow, and component interactions.
+Overview of the meerkit system design, data flow, and component interactions.
 
 ## High-Level Design
 

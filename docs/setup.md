@@ -1,6 +1,6 @@
 # Quick Start
 
-Get insta-followers-tracker up and running in minutes.
+Get meerkit up and running in minutes.
 
 ## Prerequisites
 
@@ -16,8 +16,8 @@ Before you start, ensure you have:
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/tuhin-thinks/insta-followers-tracker.git
-cd insta-followers-tracker
+git clone https://github.com/Tuhin-thinks/meerkit.git
+cd meerkit
 ```
 
 ### Step 2: Set Up Python Environment

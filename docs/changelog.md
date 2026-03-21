@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to insta-followers-tracker are documented here.
+All notable changes to meerkit are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
@@ -169,4 +169,4 @@ No previous versions.
 
 ---
 
-Copyright &copy; 2026 insta-followers-tracker contributors
+Copyright &copy; 2026 meerkit contributors

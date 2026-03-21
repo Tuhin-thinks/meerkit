@@ -1,10 +1,10 @@
 # Home
 
-Welcome to **insta-followers-tracker** – an Instagram follower tracker web application with real-time scanning, diff tracking, and image caching.
+Welcome to **Meerkit** – an Instagram follower tracker web application with real-time scanning, diff tracking, and image caching.
 
-## What is insta-followers-tracker?
+## What is Meerkit?
 
-insta-followers-tracker helps you track changes in your Instagram followers over time. It:
+Meerkit helps you track changes in your Instagram followers over time. It:
 
 - **Scans** your current followers using Instagram session credentials
 - **Computes diffs** to identify new followers and unfollowers
@@ -51,7 +51,7 @@ See your follower changes at a glance with our modern, responsive interface.
 
 ```bash
 git clone <repo-url>
-cd insta-followers-tracker
+cd meerkit
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -121,9 +121,9 @@ A: See the [Setup Guide](setup.md#getting-instagram-credentials) for step-by-ste
 ## Support
 
 - 📖 Full documentation: See the sidebar navigation
-- 🐛 Report issues: [GitHub Issues](#)
-- 💬 Discuss: [GitHub Discussions](#)
-- 📧 Contact: [your-email@example.com]
+- 🐛 Report issues: [GitHub Issues](https://github.com/Tuhin-thinks/meerkit/issues)
+- 💬 Discuss: [GitHub Discussions](https://github.com/Tuhin-thinks/meerkit/discussions)
+- 📧 Contact: [Tuhin-thinks/meerkit](https://github.com/Tuhin-thinks/meerkit)
 
 ---
 

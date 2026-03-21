@@ -1,6 +1,6 @@
 # Development
 
-Guidelines for developing, testing, and deploying insta-followers-tracker.
+Guidelines for developing, testing, and deploying meerkit.
 
 ## Local Development Setup
 
@@ -15,8 +15,8 @@ Guidelines for developing, testing, and deploying insta-followers-tracker.
 
 ```bash
 # Clone repo
-git clone https://github.com/tuhin-thinks/insta-followers-tracker.git
-cd insta-followers-tracker
+git clone https://github.com/Tuhin-thinks/meerkit.git
+cd meerkit
 
 # Python setup
 python3 -m venv .venv

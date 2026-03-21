@@ -6,7 +6,7 @@ Complete REST API endpoint documentation with request/response examples.
 
 ```
 http://localhost:5000/api (development)
-https://your-domain.com/api (production)
+https://meerkit.your-domain.com/api (production)
 ```
 
 ## Authentication
