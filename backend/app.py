@@ -25,8 +25,9 @@ def create_app() -> Flask:
     from backend.routes.auth import bp as auth_bp
     from backend.routes.history import bp as history_bp
     from backend.routes.images import bp as images_bp
+    from backend.routes.predict import bp as predict_bp
     from backend.routes.scan import bp as scan_bp
-    from backend.workers import download_worker
+    from backend.workers import download_worker, prediction_worker
 
     is_debug = (
         os.environ.get("FLASK_DEBUG") == "1"
@@ -36,11 +37,13 @@ def create_app() -> Flask:
     # Start the worker only in the reloader child process.
     if (is_debug and os.environ.get("WERKZEUG_RUN_MAIN") == "true") or (not is_debug):
         download_worker.start_download_worker()
+        prediction_worker.start_prediction_worker()
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(scan_bp)
     app.register_blueprint(history_bp)
     app.register_blueprint(images_bp)
+    app.register_blueprint(predict_bp)
 
     return app
 

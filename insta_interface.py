@@ -34,6 +34,14 @@ def _headers(profile: InstagramProfile) -> dict[str, str]:
     }
 
 
+def _profile_query_headers(profile: InstagramProfile) -> dict[str, str]:
+    """Build the smaller header set needed by the profile page GraphQL POST."""
+    return _headers(profile) | {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-fb-friendly-name": "PolarisProfilePageContentQuery",
+    }
+
+
 def _cookies(profile: InstagramProfile) -> dict[str, str]:
     """Build request cookies for a profile-scoped Instagram request."""
     return {
@@ -124,6 +132,15 @@ def _resolve_user_pk(username: str, profile: InstagramProfile) -> str | None:
         return str(candidate) if candidate is not None else None
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def resolve_target_user_pk(username: str, profile: InstagramProfile) -> str | None:
+    """Public wrapper for resolving a target username to a pk id."""
+    normalized = username.strip()
+    if not normalized:
+        return None
+    return _resolve_user_pk(normalized, profile)
+
 
 # NOTE: not used in this project.
 # already_unfollowed_users = load_unfollowed_users()
@@ -248,10 +265,114 @@ def follow_user(
     return -1
 
 
+def _fetch_profile_query_data(
+    profile: InstagramProfile,
+    target_user_id: str | None = None,
+) -> dict:
+    target_user_id = target_user_id or profile.user_id
+
+    print(f"Fetching profile data for {target_user_id=}")
+
+    variables = {
+        "enable_integrity_filters": True,
+        "id": target_user_id,
+        "render_surface": "PROFILE",
+        "__relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider": False,
+        "__relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider": False,
+        "__relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider": True,
+        "__relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider": True,
+    }
+
+    data = {
+        "variables": json.dumps(variables),
+        "doc_id": "34272012165747896",
+    }
+
+    response = requests.post(
+        url,
+        headers=_profile_query_headers(profile),
+        cookies=_cookies(profile),
+        data=data,
+    )
+    if not response.ok:
+        with open(
+            profile_query_data_path / f"profile_query_error_{target_user_id}.html", "w"
+        ) as f:
+            f.write(response.text)
+        print("Fetching user profile data:", response.status_code)
+    response.raise_for_status()
+
+    return response.json()
+
+
+def _extract_user_summary(
+    response_payload: dict,
+    unfollow_signal_followers_threshold: int = 10000,
+) -> dict[str, object]:
+    profile_query_data = response_payload["data"]
+    pprint.pprint(profile_query_data)
+    user_data = profile_query_data["user"]
+    friendship_status = user_data.get("friendship_status") or {}
+    me_following_account = friendship_status.get("following", False)
+    being_followed_by_account = friendship_status.get("followed_by", False)
+    account_followers_count = user_data.get("follower_count")
+    mutual_followers_count = user_data.get("mutual_followers_count")
+    media_count = user_data.get("media_count")
+    username = user_data.get("username")
+    category = user_data.get("category_name") or user_data.get("category")
+    biography = user_data.get("biography")
+    account_type = user_data.get("account_type")
+    if account_type is not None:
+        account_type = str(account_type)
+
+    bio_links = user_data.get("bio_links")
+    bio_links_count = len(bio_links) if isinstance(bio_links, list) else 0
+
+    has_highlight_reels = bool(user_data.get("has_highlight_reels"))
+    is_professional_account = bool(
+        user_data.get("is_professional_account") or user_data.get("is_business_account")
+    )
+
+    if username:
+        with open(profile_query_data_path / f"profile_query_{username}.json", "w") as f:
+            json.dump(response_payload, f, indent=4)
+
+    result = {
+        "username": username,
+        "full_name": user_data.get("full_name"),
+        "me_following_account": me_following_account,
+        "being_followed_by_account": being_followed_by_account,
+        "account_followers_count": account_followers_count,
+        "account_following_count": user_data.get("following_count"),
+        "mutual_followers_count": mutual_followers_count,
+        "media_count": media_count,
+        "is_private": bool(user_data.get("is_private", False)),
+        "is_verified": bool(user_data.get("is_verified", False)),
+        "is_professional_account": is_professional_account,
+        "has_highlight_reels": has_highlight_reels,
+        "profile_pic_url": user_data.get("profile_pic_url"),
+        "user_id": str(user_data.get("id") or user_data.get("pk") or ""),
+        "category": category,
+        "biography": biography,
+        "account_type": account_type,
+        "bio_links_count": bio_links_count,
+    }
+
+    if me_following_account and not being_followed_by_account:
+        result["unfollow_signal"] = bool(
+            isinstance(account_followers_count, int)
+            and account_followers_count < unfollow_signal_followers_threshold
+        )
+    else:
+        result["unfollow_signal"] = False
+
+    return result
+
+
 def get_user_data(
     profile: InstagramProfile,
     unfollow_signal_followers_threshold: int = 10000,
-) -> dict[str, str | int | bool]:
+) -> dict[str, object]:
     # user_id_query_url = (
     #     f"https://www.instagram.com/web/search/topsearch/?query={username}"
     # )
@@ -274,69 +395,27 @@ def get_user_data(
     # except IndexError:
     #     return {"error": "User not found"}
 
-    print(f"{profile.user_id=}")
-
-    variables = {
-        "enable_integrity_filters": True,
-        "id": profile.user_id,
-        "render_surface": "PROFILE",
-        "__relay_internal__pv__PolarisProjectCannesEnabledrelayprovider": True,
-        "__relay_internal__pv__PolarisProjectCannesLoggedInEnabledrelayprovider": True,
-        "__relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider": False,
-        "__relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider": False,
-    }
-
-    data = {
-        "variables": json.dumps(variables),
-        "doc_id": "31574646175516262",  # which graphql query to use
-    }
-
-    response = requests.post(
-        url,
-        headers=_headers(profile),
-        cookies=_cookies(profile),
-        data=data,
+    response_payload = _fetch_profile_query_data(profile=profile)
+    return _extract_user_summary(
+        response_payload=response_payload,
+        unfollow_signal_followers_threshold=unfollow_signal_followers_threshold,
     )
-    if not response.ok:
-        # write response error to a file
-        with open(
-            profile_query_data_path / f"profile_query_error_{profile.user_id}.html", "w"
-        ) as f:
-            f.write(response.text)
-        print("Fetching user profile data:", response.status_code)
-    response.raise_for_status()
 
-    profile_query_data = response.json()["data"]
-    pprint.pprint(profile_query_data)
-    friendship_status = profile_query_data["user"]["friendship_status"] or {}
-    # extract important fields
-    me_following_account = friendship_status.get("following", False)
-    being_followed_by_account = friendship_status.get("followed_by", False)
-    account_followers_count = profile_query_data["user"]["follower_count"]
-    username = profile_query_data["user"]["username"]
 
-    # save json a file
-    with open(profile_query_data_path / f"profile_query_{username}.json", "w") as f:
-        json.dump(response.json(), f, indent=4)
-
-    result = {
-        "username": username,
-        "me_following_account": me_following_account,
-        "being_followed_by_account": being_followed_by_account,
-        "account_followers_count": account_followers_count,
-    }
-
-    # unfollow signal
-    if me_following_account and not being_followed_by_account:
-        if account_followers_count < unfollow_signal_followers_threshold:
-            print(f"Unfollow signal for {username=}")
-            result["unfollow_signal"] = True
-        else:
-            result["unfollow_signal"] = False
-    else:
-        result["unfollow_signal"] = False
-
-    return result
+def get_target_user_data(
+    profile: InstagramProfile,
+    target_user_id: str,
+    unfollow_signal_followers_threshold: int = 10000,
+) -> dict[str, object]:
+    """Fetch target profile metadata using the authenticated account session."""
+    response_payload = _fetch_profile_query_data(
+        profile=profile,
+        target_user_id=target_user_id,
+    )
+    return _extract_user_summary(
+        response_payload=response_payload,
+        unfollow_signal_followers_threshold=unfollow_signal_followers_threshold,
+    )
 
 
 @dataclass
@@ -368,26 +447,25 @@ class FollowerUserRecord:
     def __str__(self) -> str:
         return json.dumps(self.__dict__)
 
-def get_current_followers_v2(
+
+def _get_relationship_records_v2(
     profile: InstagramProfile,
-    store_data: bool = True,
-    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
-):
-    """V2 of get_current_followers with different approach"""
-    follower_user_data_list: list[FollowerUserRecord] = []
+    target_user_id: str,
+    edge_name: str,
+    query_hash: str,
+) -> list[FollowerUserRecord]:
+    records: list[FollowerUserRecord] = []
 
     with requests.Session() as session:
-        query_hash = "c76146de99bb02f6415203be841dd25a"
         session.headers.update(_headers(profile))
         session.cookies.update(_cookies(profile))
 
         _after = None
-
         has_next = True
 
         while has_next:
             variables = {
-                "id": profile.user_id,
+                "id": target_user_id,
                 "include_reel": False,
                 "fetch_mutual": False,
                 "first": 50,
@@ -397,30 +475,48 @@ def get_current_followers_v2(
             response = session.get(_url)
             if not response.ok:
                 print(
-                    f"Error fetching followers: {response.status_code} - {response.text}"
+                    f"Error fetching {edge_name}: {response.status_code} - {response.text}"
                 )
                 break
 
             data = response.json()
-            edge = data["data"]["user"]["edge_followed_by"]
+            edge = data["data"]["user"][edge_name]
 
             for item in edge["edges"]:
                 node = item["node"]
-                follower_record = FollowerUserRecord(
-                    pk_id=node.get("id", ""),
-                    id=node.get("id", ""),
-                    fbid_v2=node.get("fbid_v2", None),
-                    profile_pic_id=node.get("profile_pic_id", None),
-                    profile_pic_url=node.get("profile_pic_url", None),
-                    username=node.get("username", None),
-                    full_name=node.get("full_name", None),
-                    is_private=node.get("is_private", False),
+                records.append(
+                    FollowerUserRecord(
+                        pk_id=node.get("id", ""),
+                        id=node.get("id", ""),
+                        fbid_v2=node.get("fbid_v2", None),
+                        profile_pic_id=node.get("profile_pic_id", None),
+                        profile_pic_url=node.get("profile_pic_url", None),
+                        username=node.get("username", None),
+                        full_name=node.get("full_name", None),
+                        is_private=node.get("is_private", False),
+                        is_verified=node.get("is_verified", False),
+                    )
                 )
-                follower_user_data_list.append(follower_record)
 
             _after = edge.get("page_info", {}).get("end_cursor")
             has_next = edge.get("page_info", {}).get("has_next_page", False)
-            print(f"Fetched batch of followers, count: {len(edge['edges'])}")
+            print(f"Fetched batch of {edge_name}, count: {len(edge['edges'])}")
+
+    return records
+
+
+def get_current_followers_v2(
+    profile: InstagramProfile,
+    store_data: bool = True,
+    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+):
+    """V2 of get_current_followers with different approach"""
+    follower_user_data_list = _get_relationship_records_v2(
+        profile=profile,
+        target_user_id=profile.user_id,
+        edge_name="edge_followed_by",
+        query_hash="c76146de99bb02f6415203be841dd25a",
+    )
 
     if store_data and _store_fn:
         _store_fn(follower_user_data_list)
@@ -434,58 +530,51 @@ def get_current_following_v2(
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
 ):
     """V2 of get_current_following with different approach"""
-    following_user_data_list: list[FollowerUserRecord] = []
-
-    with requests.Session() as session:
-        query_hash = "d04b0a864b4b54837c0d870b0e77e076"
-        session.headers.update(_headers(profile))
-        session.cookies.update(_cookies(profile))
-
-        _after = None
-
-        has_next = True
-
-        while has_next:
-            variables = {
-                "id": profile.user_id,
-                "include_reel": False,
-                "fetch_mutual": False,
-                "first": 50,
-                "after": _after,
-            }
-            _url = f"{url}?query_hash={query_hash}&variables={quote(json.dumps(variables))}"
-            response = session.get(_url)
-            if not response.ok:
-                print(
-                    f"Error fetching following users: {response.status_code} - {response.text}"
-                )
-                break
-
-            data = response.json()
-            edge = data["data"]["user"]["edge_follow"]
-
-            for item in edge["edges"]:
-                node = item["node"]
-                following_record = FollowerUserRecord(
-                    pk_id=node.get("id", ""),
-                    id=node.get("id", ""),
-                    fbid_v2=node.get("fbid_v2", None),
-                    profile_pic_id=node.get("profile_pic_id", None),
-                    profile_pic_url=node.get("profile_pic_url", None),
-                    username=node.get("username", None),
-                    full_name=node.get("full_name", None),
-                    is_private=node.get("is_private", False),
-                )
-                following_user_data_list.append(following_record)
-
-            _after = edge.get("page_info", {}).get("end_cursor")
-            has_next = edge.get("page_info", {}).get("has_next_page", False)
-            print(f"Fetched batch of following users, count: {len(edge['edges'])}")
+    following_user_data_list = _get_relationship_records_v2(
+        profile=profile,
+        target_user_id=profile.user_id,
+        edge_name="edge_follow",
+        query_hash="d04b0a864b4b54837c0d870b0e77e076",
+    )
 
     if store_data and _store_fn:
         _store_fn(following_user_data_list)
     print(f"Total following users fetched: {len(following_user_data_list)}")
     return following_user_data_list
+
+
+def get_target_followers_v2(
+    profile: InstagramProfile,
+    target_user_id: str,
+    store_data: bool = False,
+    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+) -> list[FollowerUserRecord]:
+    followers = _get_relationship_records_v2(
+        profile=profile,
+        target_user_id=target_user_id,
+        edge_name="edge_followed_by",
+        query_hash="c76146de99bb02f6415203be841dd25a",
+    )
+    if store_data and _store_fn:
+        _store_fn(followers)
+    return followers
+
+
+def get_target_following_v2(
+    profile: InstagramProfile,
+    target_user_id: str,
+    store_data: bool = False,
+    _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+) -> list[FollowerUserRecord]:
+    following = _get_relationship_records_v2(
+        profile=profile,
+        target_user_id=target_user_id,
+        edge_name="edge_follow",
+        query_hash="d04b0a864b4b54837c0d870b0e77e076",
+    )
+    if store_data and _store_fn:
+        _store_fn(following)
+    return following
 
 
 # NOTE: the above v2 approach is based on reverse engineering the Instagram web interface and faster than the v1 approach.

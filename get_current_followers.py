@@ -119,6 +119,15 @@ def run_scan_for_api(
     # Compute and persist diff
     diff_id = generate_scan_diff(latest_scan_id, reference_profile_id, app_user_id)
 
+    from backend.services import account_handler
+
+    account_handler.reconcile_followback_predictions(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        follower_ids={follower.pk_id for follower in followers if follower.pk_id},
+        observed_at=now.isoformat(),
+    )
+
     # TODO: We may not need this in future.
     if prev_followers is not None:
         add_to_downloader_queue(app_user_id, prev_followers)
