@@ -6,6 +6,7 @@ import PredictionStatusBadge from "../components/prediction/PredictionStatusBadg
 import ProbabilityChip from "../components/prediction/ProbabilityChip.vue";
 import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
+import { setBulkBatchRunning } from "../services/uiTaskState";
 import type {
     FollowBackPredictionResponse,
     PredictionRecord,
@@ -244,22 +245,27 @@ async function runBatch() {
     }
 
     isRunning.value = true;
-    const queue = rows.value.filter((row) => row.status === "ready");
-    const workers = Array.from({ length: Math.min(3, queue.length) }).map(
-        async () => {
-            while (queue.length && !disposed) {
-                const row = queue.shift();
-                if (!row) {
-                    return;
+    setBulkBatchRunning(true);
+    try {
+        const queue = rows.value.filter((row) => row.status === "ready");
+        const workers = Array.from({ length: Math.min(3, queue.length) }).map(
+            async () => {
+                while (queue.length && !disposed) {
+                    const row = queue.shift();
+                    if (!row) {
+                        return;
+                    }
+                    await executeRow(row);
                 }
-                await executeRow(row);
-            }
-        },
-    );
+            },
+        );
 
-    await Promise.all(workers);
-    if (!disposed) {
-        isRunning.value = false;
+        await Promise.all(workers);
+    } finally {
+        if (!disposed) {
+            isRunning.value = false;
+        }
+        setBulkBatchRunning(false);
     }
 }
 

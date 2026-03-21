@@ -74,6 +74,7 @@ const isScanning = computed(
     () => scanStatus.value?.status === "running" || triggerPending.value,
 );
 const scanFailed = computed(() => scanStatus.value?.status === "error");
+const scanCancelled = computed(() => scanStatus.value?.status === "cancelled");
 
 // ── Tab state ──────────────────────────────────────────────────────────────
 const activeTab = ref<"new_followers" | "unfollowers">("new_followers");
@@ -141,6 +142,10 @@ function formatDate(iso: string | null | undefined) {
         <div v-if="scanFailed && scanStatus?.error"
             class="mt-4 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-700">
             <strong>Scan failed:</strong> {{ scanStatus.error }}
+        </div>
+        <div v-if="scanCancelled && scanStatus?.error"
+            class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
+            <strong>Scan cancelled:</strong> {{ scanStatus.error }}
         </div>
         <div v-if="scanError409" class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-700">
             A scan is already in progress — please wait for it to finish.

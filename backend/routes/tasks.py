@@ -26,6 +26,11 @@ def list_tasks():
         reference_profile_id=reference_profile_id,
     )
     scan_tasks = scan_runner.list_running_scans(app_user_id)
+    active_scan_task = scan_runner.get_active_scan_task(app_user_id, reference_profile_id)
+    if active_scan_task:
+        scan_task_ids = {task.get("task_id") for task in scan_tasks}
+        if active_scan_task.get("task_id") not in scan_task_ids:
+            scan_tasks.append(active_scan_task)
 
     normalized_prediction_tasks = [
         {

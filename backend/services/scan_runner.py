@@ -9,6 +9,7 @@ from backend.services import persistence
 _locks: dict[str, threading.Lock] = {}
 _states: dict[str, dict] = {}
 _threads: dict[str, threading.Thread] = {}
+_STALE_STARTUP_GRACE_SECONDS = 5
 
 
 def _scope_key(app_user_id: str, profile_id: str) -> str:
@@ -39,6 +40,7 @@ def get_status(app_user_id: str, profile_id: str) -> dict:
     """
     key = _scope_key(app_user_id, profile_id)
     state = _ensure_state(key)
+    _cleanup_stale_running_state(key, state)
     if state["last_scan_at"] is None and state["status"] == "idle":
         meta = persistence.get_latest_scan_meta(profile_id)
         if meta:
@@ -47,11 +49,26 @@ def get_status(app_user_id: str, profile_id: str) -> dict:
     return dict(state)
 
 
+def _started_recently(started_at: object) -> bool:
+    if not isinstance(started_at, str) or not started_at:
+        return False
+    try:
+        started_at_value = datetime.fromisoformat(started_at)
+    except ValueError:
+        return False
+    return (
+        datetime.now() - started_at_value
+    ).total_seconds() < _STALE_STARTUP_GRACE_SECONDS
+
+
 def _cleanup_stale_running_state(key: str, state: dict) -> None:
     if state.get("status") != "running":
         return
-    thread = _threads.get(key)
-    if thread is not None and thread.is_alive():
+    scan_thread = _threads.get(key)
+    if scan_thread is not None:
+        if scan_thread.is_alive():
+            return
+    elif _started_recently(state.get("started_at")):
         return
     state.update(
         {
@@ -120,8 +137,8 @@ def start_scan(
             lock.release()
 
     thread = threading.Thread(target=_run, daemon=True)
-    thread.start()
     _threads[key] = thread
+    thread.start()
     return True
 
 
@@ -186,3 +203,30 @@ def list_running_scans(app_user_id: str) -> list[dict]:
         )
 
     return tasks
+
+
+def get_active_scan_task(app_user_id: str, profile_id: str) -> dict | None:
+    key = _scope_key(app_user_id, profile_id)
+    state = _ensure_state(key)
+    _cleanup_stale_running_state(key, state)
+
+    if state.get("status") not in {"running", "cancelled"}:
+        return None
+
+    latest_meta = persistence.get_latest_scan_meta(profile_id)
+    return {
+        "task_id": f"scan:{key}",
+        "task_type": "scan",
+        "source": "scan",
+        "status": state.get("status"),
+        "progress": None,
+        "error": state.get("error"),
+        "queued_at": state.get("started_at"),
+        "started_at": state.get("started_at"),
+        "completed_at": None,
+        "target_profile_id": profile_id,
+        "target_username": None,
+        "can_cancel": state.get("status") == "running",
+        "metric_label": "last follower count",
+        "metric_value": latest_meta.get("follower_count") if latest_meta else None,
+    }

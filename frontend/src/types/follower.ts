@@ -10,7 +10,7 @@ export interface FollowerRecord {
 }
 
 export interface ScanStatus {
-  status: 'idle' | 'running' | 'error'
+  status: 'idle' | 'running' | 'cancelled' | 'error'
   started_at: string | null
   last_scan_id: string | null
   last_scan_at: string | null

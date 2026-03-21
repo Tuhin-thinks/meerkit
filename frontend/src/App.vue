@@ -412,33 +412,43 @@ const discoveryUsername = computed(() => {
             </nav>
 
             <main class="max-w-6xl mx-auto px-6 py-8">
-                <Dashboard
-                    v-if="currentView === 'dashboard' && activeInstagramUser"
-                    :profile-id="activeInstagramUser.instagram_user_id"
-                />
+                <KeepAlive>
+                    <Dashboard
+                        v-if="currentView === 'dashboard' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
 
-                <HistoryView
-                    v-else-if="currentView === 'history' && activeInstagramUser"
-                    :profile-id="activeInstagramUser.instagram_user_id"
-                />
+                <KeepAlive>
+                    <HistoryView
+                        v-if="currentView === 'history' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
 
-                <PredictionsBulkView
-                    v-else-if="currentView === 'predictions' && activeInstagramUser"
-                    :profile-id="activeInstagramUser.instagram_user_id"
-                />
+                <KeepAlive>
+                    <PredictionsBulkView
+                        v-if="currentView === 'predictions' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
 
-                <DiscoveryView
-                    v-else-if="currentView === 'discovery' && activeInstagramUser"
-                    :profile-id="activeInstagramUser.instagram_user_id"
-                    :initial-username="discoveryUsername"
-                />
+                <KeepAlive>
+                    <DiscoveryView
+                        v-if="currentView === 'discovery' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :initial-username="discoveryUsername"
+                    />
+                </KeepAlive>
 
-                <TasksView
-                    v-else-if="currentView === 'tasks' && activeInstagramUser"
-                    :profile-id="activeInstagramUser.instagram_user_id"
-                />
+                <KeepAlive>
+                    <TasksView
+                        v-if="currentView === 'tasks' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                    />
+                </KeepAlive>
 
-                <div v-else-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6">
+                <div v-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6">
                     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
                         <div class="flex items-center justify-between mb-4">
                             <h2 class="text-lg font-semibold">Instagram Users</h2>
@@ -518,7 +528,7 @@ const discoveryUsername = computed(() => {
                 </div>
 
                 <div
-                    v-else-if="currentView === 'details' && selectedInstagramUser"
+                    v-if="currentView === 'details' && selectedInstagramUser"
                     class="max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
                 >
                     <button
@@ -626,7 +636,10 @@ const discoveryUsername = computed(() => {
                     </div>
                 </div>
 
-                <div v-else class="text-sm text-gray-500">
+                <div
+                    v-if="!activeInstagramUser && currentView !== 'admin' && currentView !== 'details'"
+                    class="text-sm text-gray-500"
+                >
                     Select or create an instagram user from the Admin page first.
                 </div>
             </main>

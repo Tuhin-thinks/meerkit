@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
 import PredictionStatusBadge from "../components/prediction/PredictionStatusBadge.vue";
 import TaskProgressBar from "../components/prediction/TaskProgressBar.vue";
 import * as api from "../services/api";
+import { useUiTaskState } from "../services/uiTaskState";
 import type { TaskSummary } from "../types/prediction";
 
 const props = defineProps<{
@@ -13,21 +14,81 @@ const props = defineProps<{
 const queryClient = useQueryClient();
 const terminationNoticeByTaskId = ref<Record<string, string>>({});
 const terminatingTaskId = ref<string | null>(null);
+const { isBulkBatchRunning } = useUiTaskState();
 
 const { data: taskList, isLoading } = useQuery({
     queryKey: ["tasks", props.profileId],
     queryFn: api.listTasks,
-    refetchInterval: (query) => {
-        const count =
-            (query.state.data as { running_count?: number } | undefined)
-                ?.running_count ?? 0;
-        return count > 0 ? 3000 : 6000;
-    },
+    refetchInterval: 2000,
     refetchOnWindowFocus: false,
 });
 
-const tasks = computed(() => taskList.value?.tasks ?? []);
-const runningCount = computed(() => taskList.value?.running_count ?? 0);
+const { data: scanStatus } = useQuery({
+    queryKey: ["scan", "status", props.profileId],
+    queryFn: api.getScanStatus,
+    refetchInterval: 2000,
+    refetchOnWindowFocus: false,
+});
+
+const tasks = computed(() => {
+    const merged = [...(taskList.value?.tasks ?? [])];
+
+    const scanTaskId = `scan:unknown:${props.profileId}`;
+    const hasScanTask = merged.some(
+        (task) =>
+            task.source === "scan" && task.target_profile_id === props.profileId,
+    );
+    const scanTaskStatus = scanStatus.value?.status;
+    if (
+        !hasScanTask &&
+        scanStatus.value &&
+        (scanTaskStatus === "running" || scanTaskStatus === "cancelled")
+    ) {
+        merged.unshift({
+            task_id: scanTaskId,
+            task_type: "scan",
+            source: "scan",
+            status: scanTaskStatus,
+            progress: null,
+            error: scanStatus.value.error,
+            queued_at: scanStatus.value.started_at,
+            started_at: scanStatus.value.started_at,
+            completed_at: null,
+            target_profile_id: props.profileId,
+            target_username: null,
+            can_cancel: scanTaskStatus === "running",
+            metric_label: null,
+            metric_value: null,
+        });
+    }
+
+    if (isBulkBatchRunning.value) {
+        merged.unshift({
+            task_id: "local:bulk-batch",
+            task_type: "bulk_prediction",
+            source: "prediction",
+            status: "running",
+            progress: null,
+            error: null,
+            queued_at: null,
+            started_at: null,
+            completed_at: null,
+            target_profile_id: props.profileId,
+            target_username: null,
+            can_cancel: false,
+            metric_label: "state",
+            metric_value: "processing",
+        });
+    }
+
+    return merged;
+});
+
+const runningCount = computed(
+    () =>
+        tasks.value.filter((task) => ["queued", "running"].includes(task.status))
+            .length,
+);
 
 const { mutateAsync: terminateTask } = useMutation({
     mutationFn: async (task: TaskSummary) => {
