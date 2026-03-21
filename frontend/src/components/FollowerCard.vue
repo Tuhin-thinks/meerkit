@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { RouterLink } from "vue-router";
 import ProfilePicture from "./ProfilePicture.vue";
 import type { FollowerRecord } from "../types/follower";
 
@@ -42,13 +43,22 @@ defineProps<{
             </p>
         </div>
 
-        <a
-            :href="`https://www.instagram.com/${follower.username}`"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="text-xs text-indigo-600 hover:text-indigo-800 font-medium shrink-0 px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
-        >
-            View ↗
-        </a>
+        <div class="shrink-0 flex items-center gap-2">
+            <RouterLink
+                :to="{ name: 'discovery', params: { username: follower.username } }"
+                class="text-xs text-teal-700 hover:text-teal-900 font-medium px-2 py-1 rounded hover:bg-teal-50 transition-colors"
+            >
+                Discover
+            </RouterLink>
+
+            <a
+                :href="`https://www.instagram.com/${follower.username}`"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors"
+            >
+                View ↗
+            </a>
+        </div>
     </div>
 </template>

@@ -310,6 +310,16 @@ def request_followback_prediction(
         )
         return {"prediction": prediction, "task": None}
 
+    from backend.services import prediction_runner
+
+    active_task_bundle = prediction_runner.get_active_task_bundle(
+        app_user_id=app_user_id,
+        reference_profile_id=instagram_user["instagram_user_id"],
+        target_profile_id=target_profile_id,
+    )
+    if active_task_bundle:
+        return active_task_bundle
+
     prediction = db_service.create_prediction(
         prediction_type="follow_back",
         app_user_id=app_user_id,
@@ -320,7 +330,6 @@ def request_followback_prediction(
         requested_at=current_time,
         expires_at=expires_at,
     )
-    from backend.services import prediction_runner
 
     task = prediction_runner.enqueue_prediction_refresh(
         prediction_id=prediction["prediction_id"],

@@ -1,10 +1,12 @@
 import threading
+from datetime import datetime, timedelta
 
 from backend.extensions import prediction_refresh_queue
 from backend.services import db_service
 
 _state_lock = threading.Lock()
 _states: dict[str, dict] = {}
+_STALE_RUNNING_TIMEOUT = timedelta(minutes=5)
 
 
 def _set_state(task_id: str, payload: dict) -> None:
@@ -19,6 +21,70 @@ def _merge_state(task: dict | None) -> dict | None:
     if not overlay:
         return task
     return {**task, **overlay}
+
+
+def _parse_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def is_stale_running_task(task: dict | None) -> bool:
+    if not task or task.get("status") != "running":
+        return False
+
+    started_at = _parse_timestamp(task.get("started_at"))
+    if started_at is None:
+        return True
+    return datetime.now() - started_at > _STALE_RUNNING_TIMEOUT
+
+
+def fail_stale_task(task: dict | None) -> dict | None:
+    if not is_stale_running_task(task):
+        return task
+    if task is None:
+        return None
+
+    stale_task = mark_task_error(
+        task["task_id"],
+        "Prediction task became inactive after running for more than 5 minutes.",
+    )
+    db_service.update_prediction(task["prediction_id"], status="error")
+    return stale_task
+
+
+def normalize_task(task: dict | None) -> dict | None:
+    merged_task = _merge_state(task)
+    if not merged_task:
+        return None
+    if is_stale_running_task(merged_task):
+        return fail_stale_task(merged_task)
+    return merged_task
+
+
+def get_active_task_bundle(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+) -> dict | None:
+    task = normalize_task(
+        db_service.get_latest_active_prediction_task(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+        )
+    )
+    if not task or task.get("status") not in {"queued", "running"}:
+        return None
+
+    prediction = db_service.get_prediction(task["prediction_id"])
+    if not prediction:
+        return None
+
+    return {"task": task, "prediction": prediction}
 
 
 def enqueue_prediction_refresh(
@@ -94,13 +160,13 @@ def mark_task_error(task_id: str, error: str) -> dict | None:
 
 
 def get_task_status(task_id: str) -> dict | None:
-    return _merge_state(db_service.get_prediction_task(task_id))
+    return normalize_task(db_service.get_prediction_task(task_id))
 
 
 def get_latest_task_status(
     app_user_id: str, reference_profile_id: str, target_profile_id: str | None = None
 ) -> dict | None:
-    return _merge_state(
+    return normalize_task(
         db_service.get_latest_prediction_task(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,

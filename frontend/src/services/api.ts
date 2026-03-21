@@ -7,6 +7,14 @@ import type {
   MeResponse,
   InstagramUserRecord,
 } from '../types/follower'
+import type {
+  FollowBackPredictionResponse,
+  PredictionAssessment,
+  PredictionDetailResponse,
+  PredictionFeedbackPayload,
+  PredictionRecord,
+  PredictionTask,
+} from '../types/prediction'
 
 const http = axios.create({
   baseURL: '/api',
@@ -84,3 +92,59 @@ export const getHistory = () =>
 
 export const getDiff = (diffId: string) =>
   http.get<DiffResult>(`/diff/${diffId}`, { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
+
+export const createFollowBackPrediction = (payload: {
+  username?: string
+  user_id?: string
+  refresh?: boolean
+  force_background?: boolean
+}) =>
+  http
+    .post<FollowBackPredictionResponse>('/predictions/follow-back', payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getPredictionHistory = (params?: { target_profile_id?: string; limit?: number }) =>
+  http
+    .get<PredictionRecord[]>('/predictions/history', {
+      params: {
+        profile_id: activeInstagramUserId,
+        ...(params || {}),
+      },
+    })
+    .then((r) => r.data)
+
+export const getPrediction = (predictionId: string) =>
+  http
+    .get<PredictionDetailResponse>(`/predictions/${predictionId}`, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const setPredictionFeedback = (
+  predictionId: string,
+  payload: PredictionFeedbackPayload,
+) =>
+  http
+    .patch<PredictionAssessment>(`/predictions/${predictionId}/feedback`, payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getPredictionTaskStatus = (taskId: string) =>
+  http
+    .get<PredictionTask>(`/prediction-tasks/${taskId}/status`, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getLatestPredictionTask = (params?: { target_profile_id?: string }) =>
+  http
+    .get<PredictionTask | null>('/prediction-tasks/latest', {
+      params: {
+        profile_id: activeInstagramUserId,
+        ...(params || {}),
+      },
+    })
+    .then((r) => r.data)

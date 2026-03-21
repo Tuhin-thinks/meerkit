@@ -373,28 +373,6 @@ def get_user_data(
     profile: InstagramProfile,
     unfollow_signal_followers_threshold: int = 10000,
 ) -> dict[str, object]:
-    # user_id_query_url = (
-    #     f"https://www.instagram.com/web/search/topsearch/?query={username}"
-    # )
-    # resp = requests.get(
-    #     user_id_query_url,
-    #     headers=_headers(profile),
-    #     cookies=_cookies(profile),
-    # )
-    # if not resp.ok:
-    #     # write response error to a file
-    #     with open(
-    #         profile_query_data_path / f"user_id_query_error_{username}.html", "w"
-    #     ) as f:
-    #         f.write(resp.text)
-    #     print("Fetching user pk:", resp.status_code)
-    # resp.raise_for_status()
-    # print(resp.json())
-    # try:
-    #     user_id = resp.json()["users"][0]["user"]["pk"]
-    # except IndexError:
-    #     return {"error": "User not found"}
-
     response_payload = _fetch_profile_query_data(profile=profile)
     return _extract_user_summary(
         response_payload=response_payload,

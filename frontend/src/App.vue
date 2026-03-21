@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { useRoute, useRouter } from "vue-router";
 import Dashboard from "./views/Dashboard.vue";
 import HistoryView from "./views/HistoryView.vue";
+import PredictionsBulkView from "./views/PredictionsBulkView.vue";
+import DiscoveryView from "./views/DiscoveryView.vue";
 import * as api from "./services/api";
 import type { InstagramUserRecord } from "./types/follower";
 
 const queryClient = useQueryClient();
-const currentView = ref<"dashboard" | "history" | "admin" | "details">("dashboard");
+const route = useRoute();
+const router = useRouter();
 const staleThresholdMs = 24 * 60 * 60 * 1000;
+
+type AppView = "dashboard" | "history" | "predictions" | "discovery" | "admin" | "details";
 
 const loginForm = ref({ name: "", password: "" });
 const registerForm = ref({ name: "", password: "" });
@@ -33,6 +39,16 @@ const { data: meData, isLoading: meLoading } = useQuery({
     staleTime: 30_000,
 });
 
+const isLoggedIn = computed(() => !!meData.value?.app_user_id);
+
+const currentView = computed<AppView>(() => {
+    const view = (route.name as AppView | undefined) ?? "dashboard";
+    if (["dashboard", "history", "predictions", "discovery", "admin", "details"].includes(view)) {
+        return view;
+    }
+    return "dashboard";
+});
+
 const { mutate: doRegister, isPending: registerPending, error: registerError } = useMutation({
     mutationFn: () => api.registerAppUser(registerForm.value),
 });
@@ -44,10 +60,10 @@ const { mutate: doLogin, isPending: loginPending, error: loginError } = useMutat
         const active = payload.active_instagram_user;
         if (active) {
             api.setActiveInstagramUserForApi(active.instagram_user_id);
-            currentView.value = "dashboard";
+            router.push({ name: "dashboard" });
             queryClient.invalidateQueries();
         } else {
-            currentView.value = "admin";
+            router.push({ name: "admin" });
         }
     },
 });
@@ -59,6 +75,7 @@ const { mutate: doLogout, isPending: logoutPending } = useMutation({
         selectedInstagramUser.value = null;
         queryClient.setQueryData(["me"], null);
         await queryClient.invalidateQueries();
+        router.push({ name: "dashboard" });
     },
 });
 
@@ -80,7 +97,7 @@ const {
         if (active) {
             api.setActiveInstagramUserForApi(active.instagram_user_id);
         }
-        currentView.value = "admin";
+        router.push({ name: "admin" });
         queryClient.invalidateQueries();
     },
 });
@@ -130,7 +147,7 @@ const { mutate: removeInstagramUser, isPending: removePending } = useMutation({
         const active = payload.me.active_instagram_user;
         api.setActiveInstagramUserForApi(active ? active.instagram_user_id : "");
         if (!active) {
-            currentView.value = "admin";
+            router.push({ name: "admin" });
         }
         queryClient.invalidateQueries();
     },
@@ -142,7 +159,7 @@ const { mutate: removeAllInstagramUsers, isPending: removeAllPending } = useMuta
         queryClient.setQueryData(["me"], payload.me);
         selectedInstagramUser.value = null;
         api.setActiveInstagramUserForApi("");
-        currentView.value = "admin";
+        router.push({ name: "admin" });
         queryClient.invalidateQueries();
     },
 });
@@ -220,17 +237,33 @@ function hasStaleCredentials(user: InstagramUserRecord): boolean {
     );
 }
 
-const isLoggedIn = computed(() => !!meData.value?.app_user_id);
-
-async function openDetails(instagramUserId: string) {
+async function loadDetails(instagramUserId: string) {
     selectedInstagramUser.value = await api.getInstagramUser(instagramUserId);
     if (selectedInstagramUser.value) {
         accountUpdateForm.value.display_name = selectedInstagramUser.value.name;
         accountUpdateForm.value.cookie_string = "";
     }
     accountUpdateMessage.value = "";
-    currentView.value = "details";
 }
+
+async function openDetails(instagramUserId: string) {
+    await router.push({ name: "details", params: { instagramUserId } });
+    await loadDetails(instagramUserId);
+}
+
+watch(
+    [() => route.params.instagramUserId, isLoggedIn],
+    async ([instagramUserId, loggedIn]) => {
+        if (!loggedIn || currentView.value !== "details") {
+            return;
+        }
+        if (!instagramUserId || typeof instagramUserId !== "string") {
+            return;
+        }
+        await loadDetails(instagramUserId);
+    },
+    { immediate: true },
+);
 
 function submitInstagramUserEdits() {
     if (!selectedInstagramUser.value) {
@@ -251,6 +284,22 @@ function submitInstagramUserEdits() {
         cookie_string: cookieString || undefined,
     });
 }
+
+function goTo(view: AppView) {
+    if (view === "details" && selectedInstagramUser.value) {
+        router.push({
+            name: "details",
+            params: { instagramUserId: selectedInstagramUser.value.instagram_user_id },
+        });
+        return;
+    }
+    router.push({ name: view });
+}
+
+const discoveryUsername = computed(() => {
+    const value = route.params.username;
+    return typeof value === "string" ? value : "";
+});
 </script>
 
 <template>
@@ -321,40 +370,32 @@ function submitInstagramUserEdits() {
             >
                 <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
                     <div>
-                        <p class="text-lg font-bold tracking-tight">
-                            📊 Follower Tracker
-                        </p>
-                        <p class="text-xs text-gray-500">
-                            App user: {{ meData?.name }}
-                        </p>
+                        <p class="text-lg font-bold tracking-tight">📊 Follower Tracker</p>
+                        <p class="text-xs text-gray-500">App user: {{ meData?.name }}</p>
                         <p v-if="activeInstagramUser" class="text-xs text-gray-500 mt-0.5">
-                            Active account: <span class="font-semibold text-gray-700">{{ activeInstagramUser.name }}</span>
+                            Active account:
+                            <span class="font-semibold text-gray-700">{{ activeInstagramUser.name }}</span>
                         </p>
                     </div>
 
                     <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
                         <button
-                            v-for="(label, view) in {
-                                dashboard: 'Dashboard',
-                                history: 'History',
-                                admin: 'Admin',
-                            }"
-                            :key="view"
+                            v-for="item in [
+                                { key: 'dashboard', label: 'Dashboard' },
+                                { key: 'history', label: 'History' },
+                                { key: 'predictions', label: 'Predictions' },
+                                { key: 'admin', label: 'Admin' },
+                            ]"
+                            :key="item.key"
                             :class="
-                                currentView === view
+                                currentView === item.key
                                     ? 'bg-white shadow text-gray-900'
                                     : 'text-gray-500 hover:text-gray-700'
                             "
                             class="px-4 py-1.5 rounded-md text-sm font-medium transition-all"
-                            @click="
-                                currentView =
-                                    view as
-                                        | 'dashboard'
-                                        | 'history'
-                                        | 'admin'
-                            "
+                            @click="goTo(item.key as AppView)"
                         >
-                            {{ label }}
+                            {{ item.label }}
                         </button>
                     </div>
 
@@ -373,19 +414,25 @@ function submitInstagramUserEdits() {
                     v-if="currentView === 'dashboard' && activeInstagramUser"
                     :profile-id="activeInstagramUser.instagram_user_id"
                 />
+
                 <HistoryView
                     v-else-if="currentView === 'history' && activeInstagramUser"
                     :profile-id="activeInstagramUser.instagram_user_id"
                 />
 
-                <!-- Dedicated admin page -->
-                <div
-                    v-else-if="currentView === 'admin'"
-                    class="grid lg:grid-cols-2 gap-6"
-                >
-                    <section
-                        class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
-                    >
+                <PredictionsBulkView
+                    v-else-if="currentView === 'predictions' && activeInstagramUser"
+                    :profile-id="activeInstagramUser.instagram_user_id"
+                />
+
+                <DiscoveryView
+                    v-else-if="currentView === 'discovery' && activeInstagramUser"
+                    :profile-id="activeInstagramUser.instagram_user_id"
+                    :initial-username="discoveryUsername"
+                />
+
+                <div v-else-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6">
+                    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
                         <div class="flex items-center justify-between mb-4">
                             <h2 class="text-lg font-semibold">Instagram Users</h2>
                             <button
@@ -422,16 +469,12 @@ function submitInstagramUserEdits() {
                                         Credentials old
                                     </span>
                                 </div>
-                                <p class="text-xs text-gray-500">
-                                    USER_ID: {{ u.user_id }}
-                                </p>
+                                <p class="text-xs text-gray-500">USER_ID: {{ u.user_id }}</p>
                             </button>
                         </div>
                     </section>
 
-                    <section
-                        class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
-                    >
+                    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
                         <h2 class="text-lg font-semibold mb-4">Add Instagram User</h2>
                         <form class="space-y-3" @submit.prevent="addInstagramUser()">
                             <input
@@ -467,20 +510,17 @@ function submitInstagramUserEdits() {
                     </section>
                 </div>
 
-                <!-- Instagram user details page -->
                 <div
                     v-else-if="currentView === 'details' && selectedInstagramUser"
                     class="max-w-2xl bg-white border border-gray-200 rounded-2xl shadow-sm p-6"
                 >
                     <button
-                        @click="currentView = 'admin'"
+                        @click="goTo('admin')"
                         class="text-xs mb-4 px-2 py-1 rounded bg-gray-100 hover:bg-gray-200"
                     >
                         ← Back to Admin
                     </button>
-                    <h2 class="text-xl font-bold mb-4">
-                        {{ selectedInstagramUser.name }}
-                    </h2>
+                    <h2 class="text-xl font-bold mb-4">{{ selectedInstagramUser.name }}</h2>
                     <p v-if="activeAccountMessage" class="mb-4 text-sm rounded-lg px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200">
                         {{ activeAccountMessage }}
                     </p>
@@ -500,30 +540,12 @@ function submitInstagramUserEdits() {
                                 Inactive
                             </span>
                         </p>
-                        <p>
-                            <span class="font-semibold">Instagram User ID:</span>
-                            {{ selectedInstagramUser.instagram_user_id }}
-                        </p>
-                        <p v-if="selectedInstagramUser.username">
-                            <span class="font-semibold">Username:</span>
-                            {{ selectedInstagramUser.username }}
-                        </p>
-                        <p>
-                            <span class="font-semibold">USER_ID:</span>
-                            {{ selectedInstagramUser.user_id }}
-                        </p>
-                        <p>
-                            <span class="font-semibold">CSRF_TOKEN:</span>
-                            {{ selectedInstagramUser.csrf_token }}
-                        </p>
-                        <p>
-                            <span class="font-semibold">SESSION_ID:</span>
-                            {{ selectedInstagramUser.session_id }}
-                        </p>
-                        <p>
-                            <span class="font-semibold">Created:</span>
-                            {{ new Date(selectedInstagramUser.created_at).toLocaleString() }}
-                        </p>
+                        <p><span class="font-semibold">Instagram User ID:</span> {{ selectedInstagramUser.instagram_user_id }}</p>
+                        <p v-if="selectedInstagramUser.username"><span class="font-semibold">Username:</span> {{ selectedInstagramUser.username }}</p>
+                        <p><span class="font-semibold">USER_ID:</span> {{ selectedInstagramUser.user_id }}</p>
+                        <p><span class="font-semibold">CSRF_TOKEN:</span> {{ selectedInstagramUser.csrf_token }}</p>
+                        <p><span class="font-semibold">SESSION_ID:</span> {{ selectedInstagramUser.session_id }}</p>
+                        <p><span class="font-semibold">Created:</span> {{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</p>
                         <p>
                             <span class="font-semibold">CSRF token added:</span>
                             {{ selectedInstagramUser.csrf_token_added_at ? new Date(selectedInstagramUser.csrf_token_added_at).toLocaleString() : "Unknown" }}
@@ -537,10 +559,7 @@ function submitInstagramUserEdits() {
                         </p>
                     </div>
 
-                    <form
-                        class="mt-6 space-y-3 border border-gray-200 rounded-xl p-4"
-                        @submit.prevent="submitInstagramUserEdits()"
-                    >
+                    <form class="mt-6 space-y-3 border border-gray-200 rounded-xl p-4" @submit.prevent="submitInstagramUserEdits()">
                         <h3 class="text-sm font-semibold text-gray-800">Update Account Details</h3>
                         <input
                             v-model="accountUpdateForm.display_name"
@@ -553,37 +572,21 @@ function submitInstagramUserEdits() {
                             rows="4"
                             class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                         />
-                        <div
-                            v-if="parsedCookiePreview"
-                            class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs"
-                        >
+                        <div v-if="parsedCookiePreview" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs">
                             <p class="font-semibold text-gray-700 mb-1.5">Cookie preview</p>
                             <div class="grid gap-1">
                                 <div class="flex items-start gap-2">
                                     <span class="w-24 shrink-0 text-gray-500">sessionid</span>
-                                    <span
-                                        :class="parsedCookiePreview.sessionid ? 'text-gray-900 break-all' : 'text-rose-500 italic'"
-                                    >{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
+                                    <span :class="parsedCookiePreview.sessionid ? 'text-gray-900 break-all' : 'text-rose-500 italic'">{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
                                 </div>
                                 <div class="flex items-start gap-2">
                                     <span class="w-24 shrink-0 text-gray-500">ds_user_id</span>
-                                    <span
-                                        :class="parsedCookiePreview.ds_user_id ? 'text-gray-900 break-all' : 'text-rose-500 italic'"
-                                    >{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
+                                    <span :class="parsedCookiePreview.ds_user_id ? 'text-gray-900 break-all' : 'text-rose-500 italic'">{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
                                 </div>
                                 <div class="flex items-start gap-2">
                                     <span class="w-24 shrink-0 text-gray-500">csrftoken</span>
-                                    <span
-                                        :class="parsedCookiePreview.csrftoken ? 'text-gray-900 break-all' : 'text-amber-600 italic'"
-                                    >{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
+                                    <span :class="parsedCookiePreview.csrftoken ? 'text-gray-900 break-all' : 'text-amber-600 italic'">{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
                                 </div>
-                                <p
-                                    v-if="!parsedCookiePreview.sessionid || !parsedCookiePreview.ds_user_id"
-                                    class="mt-1 text-rose-600"
-                                >
-                                    Required fields missing — fix the cookie and try again.
-                                </p>
-                                <p v-else class="mt-1 text-emerald-700">Required fields found ✓</p>
                             </div>
                         </div>
                         <button
@@ -592,9 +595,7 @@ function submitInstagramUserEdits() {
                         >
                             {{ saveInstagramUserEditsPending ? "Saving updates…" : "Save Updates" }}
                         </button>
-                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-700">
-                            {{ accountUpdateMessage }}
-                        </p>
+                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-700">{{ accountUpdateMessage }}</p>
                         <p v-if="saveInstagramUserEditsError" class="text-sm text-rose-600">
                             Could not update account details. Check cookie content and try again.
                         </p>
