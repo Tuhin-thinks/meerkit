@@ -1,3 +1,4 @@
+import math
 from datetime import datetime, timedelta
 
 import insta_interface as ii
@@ -5,6 +6,7 @@ from backend.services import db_service
 
 _PREDICTION_TTL = timedelta(days=7)
 _CACHE_FRESHNESS = timedelta(hours=6)
+_HISTORICAL_REFERENCE_LIMIT = 400
 
 
 def _as_str(value: object) -> str | None:
@@ -91,6 +93,225 @@ def _clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return max(lower, min(upper, value))
 
 
+def _safe_ratio(numerator: int | None, denominator: int | None) -> float:
+    if numerator is None or denominator is None or denominator <= 0:
+        return 0.0
+    return numerator / denominator
+
+
+def _sigmoid(value: float) -> float:
+    return 1.0 / (1.0 + math.exp(-value))
+
+
+def _logit(probability: float) -> float:
+    bounded = _clamp(probability, 1e-5, 1 - 1e-5)
+    return math.log(bounded / (1 - bounded))
+
+
+def _bucket_count(value: int | None) -> str:
+    if value is None:
+        return "unknown"
+    if value < 500:
+        return "tiny"
+    if value < 2_000:
+        return "small"
+    if value < 10_000:
+        return "mid"
+    if value < 100_000:
+        return "large"
+    return "massive"
+
+
+def _bucket_ratio(value: float) -> str:
+    if value <= 0:
+        return "none"
+    if value < 0.02:
+        return "very_low"
+    if value < 0.08:
+        return "low"
+    if value < 0.2:
+        return "medium"
+    return "high"
+
+
+def _bucket_overlap_count(value: int) -> str:
+    if value <= 0:
+        return "none"
+    if value <= 2:
+        return "low"
+    if value <= 8:
+        return "medium"
+    return "high"
+
+
+def _build_feature_breakdown(
+    target_profile: dict | None,
+    metadata_features: dict[str, object],
+    latest_follower_ids: set[str],
+    target_followers: set[str],
+    target_following: set[str],
+    overlap_followers: int,
+    overlap_following: int,
+) -> dict[str, object]:
+    follower_count = (
+        _as_int(target_profile.get("follower_count")) if target_profile else None
+    )
+    following_count = (
+        _as_int(target_profile.get("following_count")) if target_profile else None
+    )
+    mutual_followers_count = _as_int(metadata_features.get("mutual_followers_count"))
+
+    following_to_follower_ratio = _safe_ratio(following_count, follower_count)
+    mutual_to_follower_ratio = _safe_ratio(mutual_followers_count, follower_count)
+    overlap_followers_to_reference_ratio = _safe_ratio(
+        overlap_followers, len(latest_follower_ids)
+    )
+    overlap_following_to_reference_ratio = _safe_ratio(
+        overlap_following, len(latest_follower_ids)
+    )
+    overlap_followers_to_target_ratio = _safe_ratio(
+        overlap_followers, len(target_followers)
+    )
+    overlap_following_to_target_ratio = _safe_ratio(
+        overlap_following, len(target_following)
+    )
+
+    graph_fetch_status = "metadata_only"
+    if target_followers and target_following:
+        graph_fetch_status = "ready"
+    elif target_followers or target_following:
+        graph_fetch_status = "partial"
+
+    return {
+        "audience_overlap_followers": overlap_followers,
+        "audience_overlap_following": overlap_following,
+        "audience_overlap_followers_ratio_reference": round(
+            overlap_followers_to_reference_ratio, 4
+        ),
+        "audience_overlap_following_ratio_reference": round(
+            overlap_following_to_reference_ratio, 4
+        ),
+        "audience_overlap_followers_ratio_target": round(
+            overlap_followers_to_target_ratio, 4
+        ),
+        "audience_overlap_following_ratio_target": round(
+            overlap_following_to_target_ratio, 4
+        ),
+        "is_private": target_profile.get("is_private") if target_profile else None,
+        "is_verified": target_profile.get("is_verified") if target_profile else None,
+        "me_following_account": target_profile.get("me_following_account")
+        if target_profile
+        else None,
+        "being_followed_by_account": target_profile.get("being_followed_by_account")
+        if target_profile
+        else None,
+        "already_follows_account": bool(
+            target_profile.get("being_followed_by_account") if target_profile else False
+        ),
+        "follower_count": follower_count,
+        "following_count": following_count,
+        "following_to_follower_ratio": round(following_to_follower_ratio, 4),
+        "mutual_to_follower_ratio": round(mutual_to_follower_ratio, 4),
+        "target_size_bucket": _bucket_count(follower_count),
+        "mutual_bucket": _bucket_overlap_count(mutual_followers_count or 0),
+        "overlap_followers_bucket": _bucket_overlap_count(overlap_followers),
+        "overlap_following_bucket": _bucket_overlap_count(overlap_following),
+        "overlap_followers_ratio_bucket": _bucket_ratio(
+            overlap_followers_to_reference_ratio
+        ),
+        "overlap_following_ratio_bucket": _bucket_ratio(
+            overlap_following_to_reference_ratio
+        ),
+        "graph_fetch_status": graph_fetch_status,
+        **metadata_features,
+    }
+
+
+def _historical_cohort_keys(feature_breakdown: dict[str, object]) -> tuple[str, ...]:
+    return (
+        f"size:{feature_breakdown.get('target_size_bucket')}",
+        f"private:{feature_breakdown.get('is_private')}",
+        f"professional:{feature_breakdown.get('is_professional_account')}",
+        f"verified:{feature_breakdown.get('is_verified')}",
+        f"mutual:{feature_breakdown.get('mutual_bucket')}",
+        f"overlap_followers:{feature_breakdown.get('overlap_followers_bucket')}",
+        f"overlap_following:{feature_breakdown.get('overlap_following_bucket')}",
+        f"graph:{feature_breakdown.get('graph_fetch_status')}",
+        f"me_following:{feature_breakdown.get('me_following_account')}",
+    )
+
+
+def _compute_historical_reference(
+    app_user_id: str,
+    reference_profile_id: str,
+    feature_breakdown: dict[str, object],
+) -> dict[str, float | int]:
+    history = db_service.list_labeled_followback_predictions(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        limit=_HISTORICAL_REFERENCE_LIMIT,
+    )
+
+    usable_rows: list[dict] = []
+    positive_count = 0
+    for row in history:
+        if row.get("outcome_status") not in {"correct", "wrong"}:
+            continue
+        historical_breakdown = row.get("feature_breakdown")
+        if not isinstance(historical_breakdown, dict):
+            continue
+        if historical_breakdown.get("being_followed_by_account"):
+            continue
+        usable_rows.append(row)
+        if row.get("outcome_status") == "correct":
+            positive_count += 1
+
+    sample_count = len(usable_rows)
+    if sample_count == 0:
+        return {
+            "sample_count": 0,
+            "global_rate": 0.32,
+            "calibrated_probability": 0.32,
+        }
+
+    global_prior_strength = 8.0
+    global_rate = (positive_count + 2.0) / (sample_count + 4.0)
+    matched_rates: list[tuple[float, float]] = []
+    target_keys = _historical_cohort_keys(feature_breakdown)
+    for key in target_keys:
+        wins = 0
+        total = 0
+        for row in usable_rows:
+            historical_breakdown = row.get("feature_breakdown")
+            if not isinstance(historical_breakdown, dict):
+                continue
+            if key not in _historical_cohort_keys(historical_breakdown):
+                continue
+            total += 1
+            if row.get("outcome_status") == "correct":
+                wins += 1
+        if total == 0:
+            continue
+        posterior = (wins + global_rate * global_prior_strength) / (
+            total + global_prior_strength
+        )
+        weight = min(1.0, total / 24.0)
+        matched_rates.append((posterior, weight))
+
+    if matched_rates:
+        weighted_sum = sum(rate * weight for rate, weight in matched_rates)
+        weight_total = sum(weight for _, weight in matched_rates)
+        calibrated_probability = weighted_sum / weight_total
+    else:
+        calibrated_probability = global_rate
+
+    return {
+        "sample_count": sample_count,
+        "global_rate": round(global_rate, 4),
+        "calibrated_probability": round(calibrated_probability, 4),
+    }
+
+
 def compute_followback_chances(
     pk_id: str,
     reference_profile_id: str,
@@ -114,47 +335,76 @@ def compute_followback_chances(
         app_user_id, reference_profile_id, pk_id, "following"
     )
 
-    probability = 0.35
-    confidence = 0.25
+    score = _logit(0.28)
+    confidence = 0.24
     reasons: list[str] = []
     metadata_features = _metadata_feature_subset(metadata)
 
+    overlap_followers = len(target_followers & latest_follower_ids)
+    overlap_following = len(target_following & latest_follower_ids)
+    feature_breakdown = _build_feature_breakdown(
+        target_profile=target_profile,
+        metadata_features=metadata_features,
+        latest_follower_ids=latest_follower_ids,
+        target_followers=target_followers,
+        target_following=target_following,
+        overlap_followers=overlap_followers,
+        overlap_following=overlap_following,
+    )
+
     if target_profile:
-        confidence += 0.2
+        confidence += 0.14
         if target_profile.get("being_followed_by_account"):
-            probability = 0.97
-            confidence = 0.99
+            score = max(score, _logit(0.82))
+            confidence += 0.12
             reasons.append("Target already follows the active account")
         if target_profile.get("me_following_account"):
-            probability += 0.08
+            score += 0.2
             reasons.append("Active account already follows the target")
         if target_profile.get("is_private"):
-            probability -= 0.08
+            score -= 0.28
             reasons.append("Private account lowers likelihood of follow-back")
         else:
-            probability += 0.03
+            score += 0.06
         if target_profile.get("is_verified"):
-            probability -= 0.05
+            score -= 0.38
             reasons.append("Verified accounts are less likely to follow back")
 
         follower_count = target_profile.get("follower_count")
         if isinstance(follower_count, int):
             if follower_count <= 2_000:
-                probability += 0.08
+                score += 0.18
                 reasons.append("Smaller audience size increases follow-back odds")
             elif follower_count >= 100_000:
-                probability -= 0.10
+                score -= 0.42
                 reasons.append("Large audience size lowers follow-back odds")
+
+        following_count = _as_int(target_profile.get("following_count"))
+        following_to_follower_ratio = _safe_ratio(following_count, follower_count)
+        if following_to_follower_ratio >= 0.8:
+            score += 0.16
+            reasons.append("Higher follow ratio can indicate stronger reciprocity")
+        elif follower_count and following_to_follower_ratio <= 0.08:
+            score -= 0.12
+            reasons.append("Low follow ratio can reduce reciprocity odds")
 
     mutual_followers_count = _as_int(metadata_features.get("mutual_followers_count"))
     if isinstance(mutual_followers_count, int) and mutual_followers_count > 0:
-        probability += min(0.12, mutual_followers_count * 0.015)
-        confidence += min(0.18, 0.04 + mutual_followers_count * 0.02)
+        score += min(0.55, mutual_followers_count * 0.06)
+        confidence += min(0.14, 0.03 + mutual_followers_count * 0.015)
         reasons.append("Mutual followers increase likelihood of follow-back")
+
+    mutual_to_follower_ratio = _safe_ratio(
+        mutual_followers_count,
+        _as_int(target_profile.get("follower_count")) if target_profile else None,
+    )
+    if mutual_to_follower_ratio >= 0.03:
+        score += min(0.35, mutual_to_follower_ratio * 3.0)
+        reasons.append("Mutual follower ratio suggests a closer audience overlap")
 
     media_count = _as_int(metadata_features.get("media_count"))
     if isinstance(media_count, int) and media_count >= 1000:
-        probability -= 0.04
+        score -= 0.16
         reasons.append("Very high media volume slightly lowers follow-back odds")
 
     category = (_as_str(metadata_features.get("category")) or "").lower()
@@ -162,11 +412,11 @@ def compute_followback_chances(
         token in category
         for token in ("artist", "public figure", "creator", "celebrity", "musician")
     ):
-        probability -= 0.04
+        score -= 0.18
         reasons.append("Public-figure style categories reduce follow-back odds")
 
     if metadata_features.get("is_professional_account"):
-        probability -= 0.03
+        score -= 0.14
         reasons.append("Professional accounts are slightly less likely to follow back")
 
     biography = _as_str(metadata_features.get("biography")) or ""
@@ -176,27 +426,49 @@ def compute_followback_chances(
     if metadata_features.get("has_highlight_reels"):
         confidence += 0.02
 
-    overlap_followers = len(target_followers & latest_follower_ids)
-    overlap_following = len(target_following & latest_follower_ids)
     if overlap_followers:
-        probability += min(0.18, overlap_followers * 0.02)
-        confidence += 0.15
+        score += min(0.5, overlap_followers * 0.05)
+        confidence += 0.1
         reasons.append("Target followers overlap with the active audience")
     if overlap_following:
-        probability += min(0.18, overlap_following * 0.015)
-        confidence += 0.12
+        score += min(0.42, overlap_following * 0.04)
+        confidence += 0.08
         reasons.append("Target following overlaps with the active audience")
 
+    overlap_followers_ratio = _safe_ratio(overlap_followers, len(latest_follower_ids))
+    if overlap_followers_ratio >= 0.01:
+        score += min(0.35, overlap_followers_ratio * 5.0)
+
+    overlap_following_ratio = _safe_ratio(overlap_following, len(latest_follower_ids))
+    if overlap_following_ratio >= 0.01:
+        score += min(0.28, overlap_following_ratio * 4.0)
+
     if target_followers or target_following:
-        confidence += 0.2
+        confidence += 0.16
 
-    graph_fetch_status = "metadata_only"
-    if target_followers and target_following:
-        graph_fetch_status = "ready"
-    elif target_followers or target_following:
-        graph_fetch_status = "partial"
+    graph_fetch_status = feature_breakdown["graph_fetch_status"]
+    probability = _sigmoid(score)
+    historical_reference = _compute_historical_reference(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        feature_breakdown=feature_breakdown,
+    )
+    history_weight = min(
+        0.5,
+        (float(historical_reference["sample_count"]) / 120.0) * 0.5,
+    )
+    probability = (
+        probability * (1 - history_weight)
+        + float(historical_reference["calibrated_probability"]) * history_weight
+    )
+    if history_weight > 0:
+        reasons.append(
+            "Historical confirmed outcomes were used to calibrate this score"
+        )
+    if float(historical_reference["sample_count"]) >= 20:
+        confidence += min(0.16, float(historical_reference["sample_count"]) / 250.0)
 
-    probability = _clamp(round(probability, 4))
+    probability = _clamp(round(probability, 4), 0.03, 0.97)
     confidence = _clamp(round(confidence, 4))
     if not reasons:
         reasons.append(
@@ -214,27 +486,10 @@ def compute_followback_chances(
         "used_cached_followers": bool(target_followers),
         "used_cached_following": bool(target_following),
         "used_fresh_fetch": False,
-        "feature_breakdown": {
-            "audience_overlap_followers": overlap_followers,
-            "audience_overlap_following": overlap_following,
-            "is_private": target_profile.get("is_private") if target_profile else None,
-            "is_verified": target_profile.get("is_verified")
-            if target_profile
-            else None,
-            "me_following_account": target_profile.get("me_following_account")
-            if target_profile
-            else None,
-            "being_followed_by_account": target_profile.get("being_followed_by_account")
-            if target_profile
-            else None,
-            "follower_count": target_profile.get("follower_count")
-            if target_profile
-            else None,
-            "following_count": target_profile.get("following_count")
-            if target_profile
-            else None,
-            **metadata_features,
-        },
+        "statistical_reference_count": historical_reference["sample_count"],
+        "statistical_reference_rate": historical_reference["calibrated_probability"],
+        "global_historical_rate": historical_reference["global_rate"],
+        "feature_breakdown": feature_breakdown,
         "reasons": reasons,
     }
 

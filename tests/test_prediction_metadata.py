@@ -71,6 +71,11 @@ def test_compute_followback_chances_uses_richer_metadata(monkeypatch):
             set()
         ),
     )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [],
+    )
 
     result = account_handler.compute_followback_chances(
         pk_id="123",
@@ -91,6 +96,8 @@ def test_compute_followback_chances_uses_richer_metadata(monkeypatch):
     assert result["feature_breakdown"]["mutual_followers_count"] == 3
     assert result["feature_breakdown"]["category"] == "Public Figure"
     assert result["feature_breakdown"]["is_professional_account"] is True
+    assert result["feature_breakdown"]["following_to_follower_ratio"] == 0.06
+    assert result["feature_breakdown"]["target_size_bucket"] == "mid"
     assert result["confidence"] > 0.45
     assert any(
         "Mutual followers increase likelihood" in reason for reason in result["reasons"]
@@ -171,6 +178,11 @@ def test_request_followback_prediction_reuses_cached_metadata(monkeypatch):
         "create_prediction",
         lambda **kwargs: kwargs,
     )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [],
+    )
 
     result = account_handler.request_followback_prediction(
         app_user_id="app_test_user",
@@ -222,6 +234,11 @@ def test_request_followback_prediction_reuses_active_task(monkeypatch):
         lambda app_user_id, reference_profile_id, target_profile_id: {
             "username": "target.user"
         },
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [],
     )
 
     reused_bundle = {
@@ -380,3 +397,100 @@ def test_get_task_status_marks_stale_running_task_as_error(monkeypatch):
 
     assert result == errored_task
     assert updated_predictions == [("pred_stale", "error")]
+
+
+def test_compute_followback_chances_uses_historical_reference(monkeypatch):
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile",
+        lambda app_user_id, reference_profile_id, target_profile_id: {
+            "username": "target.user",
+            "is_private": False,
+            "is_verified": False,
+            "me_following_account": True,
+            "being_followed_by_account": False,
+            "follower_count": 900,
+            "following_count": 750,
+        },
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_latest_scanned_profile_ids",
+        lambda app_user_id, reference_profile_id: {"a", "b", "c", "d", "e"},
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile_relationship_ids",
+        lambda app_user_id, reference_profile_id, target_profile_id, relationship_type: (
+            {"a", "b"} if relationship_type == "followers" else {"c"}
+        ),
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [
+            {
+                "outcome_status": "correct",
+                "feature_breakdown": {
+                    "target_size_bucket": "small",
+                    "is_private": False,
+                    "is_professional_account": False,
+                    "is_verified": False,
+                    "mutual_bucket": "medium",
+                    "overlap_followers_bucket": "low",
+                    "overlap_following_bucket": "low",
+                    "graph_fetch_status": "ready",
+                    "me_following_account": True,
+                    "being_followed_by_account": False,
+                },
+            },
+            {
+                "outcome_status": "correct",
+                "feature_breakdown": {
+                    "target_size_bucket": "small",
+                    "is_private": False,
+                    "is_professional_account": False,
+                    "is_verified": False,
+                    "mutual_bucket": "medium",
+                    "overlap_followers_bucket": "low",
+                    "overlap_following_bucket": "low",
+                    "graph_fetch_status": "ready",
+                    "me_following_account": True,
+                    "being_followed_by_account": False,
+                },
+            },
+            {
+                "outcome_status": "wrong",
+                "feature_breakdown": {
+                    "target_size_bucket": "large",
+                    "is_private": True,
+                    "is_professional_account": True,
+                    "is_verified": False,
+                    "mutual_bucket": "none",
+                    "overlap_followers_bucket": "none",
+                    "overlap_following_bucket": "none",
+                    "graph_fetch_status": "metadata_only",
+                    "me_following_account": False,
+                    "being_followed_by_account": False,
+                },
+            },
+        ],
+    )
+
+    result = account_handler.compute_followback_chances(
+        pk_id="123",
+        reference_profile_id="ig_123",
+        app_user_id="app_test_user",
+        metadata={
+            "mutual_followers_count": 4,
+            "media_count": 80,
+            "is_professional_account": False,
+        },
+    )
+
+    assert result["statistical_reference_count"] == 3
+    assert result["statistical_reference_rate"] > result["global_historical_rate"]
+    assert any(
+        "Historical confirmed outcomes were used to calibrate this score" in reason
+        for reason in result["reasons"]
+    )

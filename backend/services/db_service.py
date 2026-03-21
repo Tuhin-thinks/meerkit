@@ -1266,3 +1266,33 @@ def list_active_followback_predictions(
             if normalized is not None:
                 results.append(normalized)
         return results
+
+
+def list_labeled_followback_predictions(
+    app_user_id: str,
+    reference_profile_id: str,
+    limit: int = 500,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM predictions
+            WHERE app_user_id = ?
+              AND reference_profile_id = ?
+              AND prediction_type = 'follow_back'
+              AND outcome_status IN ('correct', 'wrong')
+              AND feature_breakdown_json IS NOT NULL
+            ORDER BY requested_at DESC
+            LIMIT ?
+            """,
+            (app_user_id, reference_profile_id, limit),
+        )
+        results: list[dict] = []
+        for row in cursor.fetchall():
+            normalized = _normalize_prediction_row(row)
+            if normalized is not None:
+                results.append(normalized)
+        return results
