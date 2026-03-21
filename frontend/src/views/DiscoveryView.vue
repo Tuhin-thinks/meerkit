@@ -609,11 +609,11 @@ async function submitFeedback() {
                     v-if="!feedbackMode && !feedbackReassessing && prediction.outcome_status && prediction.outcome_status !== 'pending'"
                     class="flex items-center gap-3 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
                 >
-                    <span class="text-2xl">{{ prediction.outcome_status === 'correct' ? '✅' : '❌' }}</span>
+                    <span class="text-2xl">{{ ['correct', 'confirmed'].includes(prediction.outcome_status) ? '✅' : '❌' }}</span>
                     <div class="flex-1">
                         <p class="text-sm font-semibold text-slate-200">
                             Outcome recorded:
-                            <span :class="prediction.outcome_status === 'correct' ? 'text-emerald-400' : 'text-rose-400'">
+                            <span :class="['correct', 'confirmed'].includes(prediction.outcome_status) ? 'text-emerald-400' : 'text-rose-400'">
                                 {{ prediction.outcome_status }}
                             </span>
                         </p>
