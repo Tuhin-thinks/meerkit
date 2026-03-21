@@ -14,6 +14,8 @@ const badgeClass = computed(() => {
             return "bg-amber-100 text-amber-800";
         case "running":
             return "bg-sky-100 text-sky-800";
+        case "cancelled":
+            return "bg-gray-200 text-gray-700";
         case "error":
         case "invalid":
             return "bg-rose-100 text-rose-800";

@@ -27,6 +27,10 @@ def start_prediction_worker() -> None:
             task_id = item["task_id"]
             prediction_id = item["prediction_id"]
             try:
+                current_task = prediction_runner.get_task_status(task_id)
+                if current_task and current_task.get("status") == "cancelled":
+                    continue
+
                 prediction_runner.mark_task_running(task_id)
                 prediction_runner.mark_task_progress(task_id, 0.4)
 

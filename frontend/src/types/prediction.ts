@@ -1,4 +1,4 @@
-export type PredictionStatus = 'queued' | 'running' | 'completed' | 'error'
+export type PredictionStatus = 'queued' | 'running' | 'completed' | 'error' | 'cancelled'
 
 export type PredictionOutcomeStatus =
   | 'pending'
@@ -82,4 +82,27 @@ export interface RelationshipCacheStatusItem {
 export interface RelationshipCacheStatusResponse {
   followers: RelationshipCacheStatusItem
   following: RelationshipCacheStatusItem
+}
+
+export interface TaskSummary {
+  task_id: string
+  task_type: string
+  source: 'prediction' | 'scan'
+  status: PredictionStatus
+  progress: number | null
+  error: string | null
+  queued_at: string | null
+  started_at: string | null
+  completed_at: string | null
+  target_profile_id: string | null
+  target_username: string | null
+  can_cancel: boolean
+  metric_label: string | null
+  metric_value: number | string | null
+}
+
+export interface TaskListResponse {
+  running_count: number
+  total: number
+  tasks: TaskSummary[]
 }

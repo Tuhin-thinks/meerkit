@@ -6,6 +6,7 @@ import Dashboard from "./views/Dashboard.vue";
 import HistoryView from "./views/HistoryView.vue";
 import PredictionsBulkView from "./views/PredictionsBulkView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
+import TasksView from "./views/TasksView.vue";
 import * as api from "./services/api";
 import type { InstagramUserRecord } from "./types/follower";
 
@@ -14,7 +15,7 @@ const route = useRoute();
 const router = useRouter();
 const staleThresholdMs = 24 * 60 * 60 * 1000;
 
-type AppView = "dashboard" | "history" | "predictions" | "discovery" | "admin" | "details";
+type AppView = "dashboard" | "history" | "predictions" | "discovery" | "tasks" | "admin" | "details";
 
 const loginForm = ref({ name: "", password: "" });
 const registerForm = ref({ name: "", password: "" });
@@ -43,7 +44,7 @@ const isLoggedIn = computed(() => !!meData.value?.app_user_id);
 
 const currentView = computed<AppView>(() => {
     const view = (route.name as AppView | undefined) ?? "dashboard";
-    if (["dashboard", "history", "predictions", "discovery", "admin", "details"].includes(view)) {
+    if (["dashboard", "history", "predictions", "discovery", "tasks", "admin", "details"].includes(view)) {
         return view;
     }
     return "dashboard";
@@ -384,6 +385,7 @@ const discoveryUsername = computed(() => {
                                 { key: 'dashboard', label: 'Dashboard' },
                                 { key: 'history', label: 'History' },
                                 { key: 'predictions', label: 'Predictions' },
+                                { key: 'tasks', label: 'Tasks' },
                                 { key: 'admin', label: 'Admin' },
                             ]"
                             :key="item.key"
@@ -429,6 +431,11 @@ const discoveryUsername = computed(() => {
                     v-else-if="currentView === 'discovery' && activeInstagramUser"
                     :profile-id="activeInstagramUser.instagram_user_id"
                     :initial-username="discoveryUsername"
+                />
+
+                <TasksView
+                    v-else-if="currentView === 'tasks' && activeInstagramUser"
+                    :profile-id="activeInstagramUser.instagram_user_id"
                 />
 
                 <div v-else-if="currentView === 'admin'" class="grid lg:grid-cols-2 gap-6">

@@ -197,3 +197,22 @@ def latest_prediction_task_status():
         target_profile_id=target_profile_id,
     )
     return jsonify(task)
+
+
+@bp.post("/prediction-tasks/<task_id>/cancel")
+def cancel_prediction_task(task_id: str):
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    task = prediction_runner.get_task_status(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+    if task.get("app_user_id") != app_user_id:
+        return jsonify({"error": "Task not found"}), 404
+
+    cancelled = prediction_runner.cancel_task(task_id)
+    if not cancelled:
+        return jsonify({"error": "Task not found"}), 404
+    return jsonify({"task": cancelled})

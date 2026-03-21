@@ -142,6 +142,9 @@ def mark_task_progress(task_id: str, progress: float) -> dict | None:
 
 
 def mark_task_completed(task_id: str) -> dict | None:
+    current = get_task_status(task_id)
+    if current and current.get("status") == "cancelled":
+        return current
     task = db_service.update_prediction_task(
         task_id,
         status="completed",
@@ -155,6 +158,9 @@ def mark_task_completed(task_id: str) -> dict | None:
 
 
 def mark_task_error(task_id: str, error: str) -> dict | None:
+    current = get_task_status(task_id)
+    if current and current.get("status") == "cancelled":
+        return current
     task = db_service.update_prediction_task(
         task_id,
         status="error",
@@ -180,3 +186,47 @@ def get_latest_task_status(
             target_profile_id=target_profile_id,
         )
     )
+
+
+def mark_task_cancelled(task_id: str) -> dict | None:
+    task = db_service.update_prediction_task(
+        task_id,
+        status="cancelled",
+        completed_at=db_service._now_iso(),
+        error="Cancelled by user.",
+    )
+    if task:
+        _set_state(task_id, task)
+    return task
+
+
+def cancel_task(task_id: str) -> dict | None:
+    task = get_task_status(task_id)
+    if not task:
+        return None
+
+    if task.get("status") in {"completed", "error", "cancelled"}:
+        return task
+
+    return mark_task_cancelled(task_id)
+
+
+def list_active_tasks(app_user_id: str, reference_profile_id: str) -> list[dict]:
+    list_tasks_fn = getattr(db_service, "list_active_prediction_tasks", None)
+    if callable(list_tasks_fn):
+        tasks = list_tasks_fn(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+        )
+    else:
+        tasks = []
+
+    normalized: list[dict] = []
+    for task in tasks:
+        item = normalize_task(task)
+        if not item:
+            continue
+        if item.get("status") not in {"queued", "running", "cancelled"}:
+            continue
+        normalized.append(item)
+    return normalized

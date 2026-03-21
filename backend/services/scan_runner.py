@@ -8,6 +8,7 @@ from backend.services import persistence
 
 _locks: dict[str, threading.Lock] = {}
 _states: dict[str, dict] = {}
+_threads: dict[str, threading.Thread] = {}
 
 
 def _scope_key(app_user_id: str, profile_id: str) -> str:
@@ -18,7 +19,7 @@ def _scope_key(app_user_id: str, profile_id: str) -> str:
 def _ensure_state(key: str) -> dict:
     if key not in _states:
         _states[key] = {
-            "status": "idle",  # idle | running | error
+            "status": "idle",  # idle | running | cancelled | error
             "started_at": None,
             "last_scan_id": None,
             "last_scan_at": None,
@@ -46,6 +47,20 @@ def get_status(app_user_id: str, profile_id: str) -> dict:
     return dict(state)
 
 
+def _cleanup_stale_running_state(key: str, state: dict) -> None:
+    if state.get("status") != "running":
+        return
+    thread = _threads.get(key)
+    if thread is not None and thread.is_alive():
+        return
+    state.update(
+        {
+            "status": "error",
+            "error": "Scan task is stale because its worker thread is no longer active.",
+        }
+    )
+
+
 def _run_worker(
     app_user_id: str, data_dir: Path, credentials: dict, target_user_id: str
 ) -> dict:
@@ -69,6 +84,7 @@ def start_scan(
     """Start a background scan for one user/profile, returning False if already running."""
     key = _scope_key(app_user_id, profile_id)
     state = _ensure_state(key)
+    _cleanup_stale_running_state(key, state)
     lock = _locks[key]
 
     acquired = lock.acquire(blocking=False)
@@ -86,19 +102,87 @@ def start_scan(
     def _run() -> None:
         try:
             result = _run_worker(app_user_id, data_dir, credentials, target_user_id)
-            state.update(
-                {
-                    "status": "idle",
-                    "last_scan_id": result["scan_id"],
-                    "last_scan_at": result["timestamp"],
-                }
-            )
+            if state.get("status") != "cancelled":
+                state.update(
+                    {
+                        "status": "idle",
+                        "last_scan_id": result["scan_id"],
+                        "last_scan_at": result["timestamp"],
+                    }
+                )
         except Exception as exc:
             _detailed_error = traceback.format_exc()
             print(f"Scan worker error for {key}: {_detailed_error}")
-            state.update({"status": "error", "error": str(exc)})
+            if state.get("status") != "cancelled":
+                state.update({"status": "error", "error": str(exc)})
         finally:
+            _threads.pop(key, None)
             lock.release()
 
-    threading.Thread(target=_run, daemon=True).start()
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    _threads[key] = thread
     return True
+
+
+def cancel_scan(app_user_id: str, profile_id: str) -> dict:
+    key = _scope_key(app_user_id, profile_id)
+    state = _ensure_state(key)
+    _cleanup_stale_running_state(key, state)
+
+    if state.get("status") != "running":
+        return {
+            "ok": False,
+            "status": state.get("status"),
+            "message": "No running scan to cancel.",
+        }
+
+    state.update(
+        {
+            "status": "cancelled",
+            "error": "Cancelled by user.",
+        }
+    )
+    return {
+        "ok": True,
+        "status": "cancelled",
+        "message": "Scan marked as cancelled.",
+    }
+
+
+def list_running_scans(app_user_id: str) -> list[dict]:
+    tasks: list[dict] = []
+    prefix = f"{app_user_id}:"
+
+    for key, state in list(_states.items()):
+        if not key.startswith(prefix):
+            continue
+
+        _cleanup_stale_running_state(key, state)
+        if state.get("status") not in {"running", "cancelled"}:
+            continue
+
+        _scope_app_user_id, profile_id = key.split(":", 1)
+        latest_meta = persistence.get_latest_scan_meta(profile_id)
+        tasks.append(
+            {
+                "task_id": f"scan:{key}",
+                "task_type": "scan",
+                "source": "scan",
+                "status": state.get("status"),
+                "progress": None,
+                "error": state.get("error"),
+                "queued_at": state.get("started_at"),
+                "started_at": state.get("started_at"),
+                "completed_at": None,
+                "target_profile_id": profile_id,
+                "target_username": None,
+                "can_cancel": state.get("status") == "running",
+                "metric_label": "last follower count",
+                "metric_value": latest_meta.get("follower_count")
+                if latest_meta
+                else None,
+            }
+        )
+
+    return tasks

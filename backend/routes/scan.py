@@ -72,3 +72,19 @@ def summary():
                 "unfollow_count": diff["unfollow_count"],
             }
     return jsonify(meta)
+
+
+@bp.post("/scan/cancel")
+def cancel_scan():
+    instagram_user_id = request.args.get("profile_id") or request.args.get(
+        "instagram_user_id"
+    )
+    app_user_id, context = get_active_context(instagram_user_id)
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    result = scan_runner.cancel_scan(app_user_id, instagram_user["instagram_user_id"])
+    status_code = 200 if result.get("ok") else 409
+    return jsonify(result), status_code

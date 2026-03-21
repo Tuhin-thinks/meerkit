@@ -1358,6 +1358,33 @@ def get_latest_active_prediction_task(
         return dict(row) if row else None
 
 
+def list_active_prediction_tasks(
+    app_user_id: str,
+    reference_profile_id: str,
+    statuses: tuple[str, ...] = ("queued", "running", "cancelled"),
+    limit: int = 100,
+) -> list[dict]:
+    if not statuses:
+        return []
+
+    db = get_worker_db()
+    placeholders = ", ".join("?" for _ in statuses)
+    query = f"""
+        SELECT *
+        FROM prediction_tasks
+        WHERE app_user_id = ?
+          AND reference_profile_id = ?
+          AND status IN ({placeholders})
+        ORDER BY queued_at DESC
+        LIMIT ?
+    """
+    params: list[str | int] = [app_user_id, reference_profile_id, *statuses, limit]
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, tuple(params))
+        return [dict(row) for row in cursor.fetchall()]
+
+
 def create_prediction_assessment(
     prediction_id: str,
     assessment_status: str,

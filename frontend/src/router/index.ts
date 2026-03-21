@@ -9,6 +9,7 @@ const router = createRouter({
     { path: '/history', name: 'history', component: RoutePlaceholder },
     { path: '/predictions', name: 'predictions', component: RoutePlaceholder },
     { path: '/discovery/:username?', name: 'discovery', component: RoutePlaceholder },
+    { path: '/tasks', name: 'tasks', component: RoutePlaceholder },
     { path: '/admin', name: 'admin', component: RoutePlaceholder },
     {
       path: '/admin/accounts/:instagramUserId',

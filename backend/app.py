@@ -27,6 +27,7 @@ def create_app() -> Flask:
     from backend.routes.images import bp as images_bp
     from backend.routes.predict import bp as predict_bp
     from backend.routes.scan import bp as scan_bp
+    from backend.routes.tasks import bp as tasks_bp
     from backend.workers import download_worker, prediction_worker
 
     is_debug = (
@@ -44,6 +45,7 @@ def create_app() -> Flask:
     app.register_blueprint(history_bp)
     app.register_blueprint(images_bp)
     app.register_blueprint(predict_bp)
+    app.register_blueprint(tasks_bp)
 
     return app
 

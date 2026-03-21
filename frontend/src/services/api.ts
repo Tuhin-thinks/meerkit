@@ -15,6 +15,7 @@ import type {
   PredictionRecord,
   RelationshipCacheStatusResponse,
   PredictionTask,
+  TaskListResponse,
 } from '../types/prediction'
 
 const http = axios.create({
@@ -175,4 +176,25 @@ export const refreshTargetRelationshipCache = (
         params: { profile_id: activeInstagramUserId },
       },
     )
+    .then((r) => r.data)
+
+export const listTasks = () =>
+  http
+    .get<TaskListResponse>('/tasks', {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const cancelPredictionTask = (taskId: string) =>
+  http
+    .post<{ task: PredictionTask }>(`/prediction-tasks/${taskId}/cancel`, null, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const cancelScan = () =>
+  http
+    .post<{ ok: boolean; status: string; message: string }>('/scan/cancel', null, {
+      params: { profile_id: activeInstagramUserId },
+    })
     .then((r) => r.data)
