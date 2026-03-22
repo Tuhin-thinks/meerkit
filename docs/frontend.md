@@ -42,7 +42,7 @@ frontend/src/
 
 **Dashboard View** - Track real-time follower changes
 
-![History](images/img-history.png)
+![Scan History](images/meerkit-scan-history.png)
 
 ## Core Components
 

@@ -6,7 +6,7 @@ Comprehensive guide to the Flask backend architecture, services, and API design.
 
 ## Admin Interface
 
-![Admin](images/img-admin.png)
+![Admin Interface](images/meerkit-admin-window.png)
 
 ## API Architecture
 The backend is a Flask application organized into layers:

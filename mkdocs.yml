@@ -77,6 +77,7 @@ nav:
       - Quick Start: setup.md
       - Architecture: architecture.md
   - Documentation:
+      - Visual Tour: showcase.md
       - Backend API: backend.md
       - Frontend: frontend.md
       - Database: database.md
