@@ -470,6 +470,7 @@ def compute_followback_chances(
     reference_profile_id: str,
     app_user_id: str | None = None,
     metadata: dict[str, object] | None = None,
+    include_overlap: bool = True,
 ):
     """Compute follow-back probability for one target user using cached profile data."""
     if not app_user_id:
@@ -478,15 +479,22 @@ def compute_followback_chances(
     target_profile = db_service.get_target_profile(
         app_user_id, reference_profile_id, pk_id
     )
-    latest_follower_ids = db_service.get_latest_scanned_profile_ids(
-        app_user_id, reference_profile_id
-    )
-    target_followers = db_service.get_target_profile_relationship_ids(
-        app_user_id, reference_profile_id, pk_id, "followers"
-    )
-    target_following = db_service.get_target_profile_relationship_ids(
-        app_user_id, reference_profile_id, pk_id, "following"
-    )
+
+    # Only load relationship data if we'll use overlap scoring
+    if include_overlap:
+        latest_follower_ids = db_service.get_latest_scanned_profile_ids(
+            app_user_id, reference_profile_id
+        )
+        target_followers = db_service.get_target_profile_relationship_ids(
+            app_user_id, reference_profile_id, pk_id, "followers"
+        )
+        target_following = db_service.get_target_profile_relationship_ids(
+            app_user_id, reference_profile_id, pk_id, "following"
+        )
+    else:
+        latest_follower_ids = set()
+        target_followers = set()
+        target_following = set()
 
     score = _logit(0.28)
     confidence = 0.24
@@ -593,25 +601,30 @@ def compute_followback_chances(
     if metadata_features.get("has_highlight_reels"):
         confidence += 0.02
 
-    if overlap_followers:
-        score += min(0.5, overlap_followers * 0.05)
-        confidence += 0.1
-        reasons.append("Target followers overlap with the active audience")
-    if overlap_following:
-        score += min(0.42, overlap_following * 0.04)
-        confidence += 0.08
-        reasons.append("Target following overlaps with the active audience")
+    if include_overlap:
+        if overlap_followers:
+            score += min(0.5, overlap_followers * 0.05)
+            confidence += 0.1
+            reasons.append("Target followers overlap with the active audience")
+        if overlap_following:
+            score += min(0.42, overlap_following * 0.04)
+            confidence += 0.08
+            reasons.append("Target following overlaps with the active audience")
 
-    overlap_followers_ratio = _safe_ratio(overlap_followers, len(latest_follower_ids))
-    if overlap_followers_ratio >= 0.01:
-        score += min(0.35, overlap_followers_ratio * 5.0)
+        overlap_followers_ratio = _safe_ratio(
+            overlap_followers, len(latest_follower_ids)
+        )
+        if overlap_followers_ratio >= 0.01:
+            score += min(0.35, overlap_followers_ratio * 5.0)
 
-    overlap_following_ratio = _safe_ratio(overlap_following, len(latest_follower_ids))
-    if overlap_following_ratio >= 0.01:
-        score += min(0.28, overlap_following_ratio * 4.0)
+        overlap_following_ratio = _safe_ratio(
+            overlap_following, len(latest_follower_ids)
+        )
+        if overlap_following_ratio >= 0.01:
+            score += min(0.28, overlap_following_ratio * 4.0)
 
-    if target_followers or target_following:
-        confidence += 0.16
+        if target_followers or target_following:
+            confidence += 0.16
 
     graph_fetch_status = feature_breakdown["graph_fetch_status"]
     probability = _sigmoid(score)
@@ -642,6 +655,13 @@ def compute_followback_chances(
             "Limited data available; prediction based on baseline heuristics"
         )
 
+    # Compute state flags
+    overlap_data_fetched = graph_fetch_status == "ready"
+    overlap_available = include_overlap
+    overlap_scoring_used = include_overlap
+    ambiguous_probability = 0.45 <= probability <= 0.65
+    can_fetch_overlap = not overlap_data_fetched
+
     return {
         "target_profile_id": pk_id,
         "target_username": target_profile.get("username") if target_profile else None,
@@ -656,6 +676,11 @@ def compute_followback_chances(
         "statistical_reference_count": historical_reference["sample_count"],
         "statistical_reference_rate": historical_reference["calibrated_probability"],
         "global_historical_rate": historical_reference["global_rate"],
+        "overlap_data_fetched": overlap_data_fetched,
+        "overlap_scoring_used": overlap_scoring_used,
+        "overlap_available": overlap_available,
+        "ambiguous_probability": ambiguous_probability,
+        "can_fetch_overlap": can_fetch_overlap,
         "feature_breakdown": feature_breakdown,
         "reasons": reasons,
     }
@@ -705,6 +730,17 @@ def request_followback_prediction(
             app_user_id, instagram_user["instagram_user_id"], target_profile_id
         )
     ):
+        relationship_cache_summary = (
+            db_service.get_target_profile_relationship_cache_summary(
+                app_user_id=app_user_id,
+                reference_profile_id=instagram_user["instagram_user_id"],
+                target_profile_id=target_profile_id,
+            )
+        )
+        has_full_overlap_cache = all(
+            bool(item.get("active_file_present"))
+            for item in relationship_cache_summary.values()
+        )
         cached_metadata = _latest_prediction_metadata(
             app_user_id=app_user_id,
             reference_profile_id=instagram_user["instagram_user_id"],
@@ -715,7 +751,9 @@ def request_followback_prediction(
             reference_profile_id=instagram_user["instagram_user_id"],
             app_user_id=app_user_id,
             metadata=cached_metadata,
+            include_overlap=has_full_overlap_cache,
         )
+        result["relationship_cache"] = relationship_cache_summary
         if cached_metadata:
             result["target_profile"] = {
                 "username": target_username,
@@ -775,6 +813,7 @@ def request_followback_prediction(
         instagram_user=instagram_user,
         refresh_requested=refresh or force_background,
         relationship_type=requested_relationship_type,
+        fetch_relationships=refresh or relationship_type is not None,
     )
     prediction = (
         db_service.update_prediction(
@@ -791,6 +830,7 @@ def refresh_followback_prediction(
     prediction_id: str,
     instagram_user: dict,
     relationship_type: str | None = None,
+    fetch_relationships: bool = True,
 ) -> dict:
     prediction = db_service.get_prediction(prediction_id)
     if not prediction:
@@ -847,67 +887,72 @@ def refresh_followback_prediction(
 
     fetch_status = "ready"
     last_error: str | None = None
-    fetch_map = {
-        "followers": lambda target_id: instagram_gateway.get_target_followers_v2(
-            app_user_id=app_user_id,
-            instagram_user_id=reference_profile_id,
-            profile=profile,
-            target_user_id=target_id,
-            caller_service="account_handler",
-            caller_method="refresh_followback_prediction",
-        ),
-        "following": lambda target_id: instagram_gateway.get_target_following_v2(
-            app_user_id=app_user_id,
-            instagram_user_id=reference_profile_id,
-            profile=profile,
-            target_user_id=target_id,
-            caller_service="account_handler",
-            caller_method="refresh_followback_prediction",
-        ),
-    }
-    for relationship in sorted(relationships_to_refresh):
-        try:
-            records = fetch_map[relationship](target_profile_id)
-            db_service.replace_target_profile_relationships(
+
+    if fetch_relationships:
+        fetch_map = {
+            "followers": lambda target_id: instagram_gateway.get_target_followers_v2(
                 app_user_id=app_user_id,
-                reference_profile_id=reference_profile_id,
-                target_profile_id=target_profile_id,
-                relationship_type=relationship,
-                profiles=records,
-                fetched_at=relationships_time,
-            )
-            _invalidate_relationship_cache_entry(
+                instagram_user_id=reference_profile_id,
+                profile=profile,
+                target_user_id=target_id,
+                caller_service="account_handler",
+                caller_method="refresh_followback_prediction",
+            ),
+            "following": lambda target_id: instagram_gateway.get_target_following_v2(
                 app_user_id=app_user_id,
-                reference_profile_id=reference_profile_id,
-                target_profile_id=target_profile_id,
-                relationship_type=relationship,
-                reason="replaced_by_new_fetch",
-                invalidated_at=relationships_time,
-            )
-            cache_file_path = relationship_cache.write_relationship_cache_file(
-                app_user_id=app_user_id,
-                reference_profile_id=reference_profile_id,
-                target_profile_id=target_profile_id,
-                relationship_type=relationship,
-                fetched_at=relationships_time,
-                profiles_payload=[asdict(item) for item in records],
-            )
-            db_service.create_target_profile_list_cache_entry(
-                app_user_id=app_user_id,
-                reference_profile_id=reference_profile_id,
-                target_profile_id=target_profile_id,
-                relationship_type=relationship,
-                cache_file_path=cache_file_path,
-                fetched_at=relationships_time,
-                source_count_at_fetch=_count_for_relationship_type(
-                    relationship,
-                    metadata_follower_count,
-                    metadata_following_count,
-                ),
-            )
-        except Exception as exc:
-            fetch_status = "partial"
-            last_error = str(exc)
+                instagram_user_id=reference_profile_id,
+                profile=profile,
+                target_user_id=target_id,
+                caller_service="account_handler",
+                caller_method="refresh_followback_prediction",
+            ),
+        }
+        for relationship in sorted(relationships_to_refresh):
+            try:
+                records = fetch_map[relationship](target_profile_id)
+                db_service.replace_target_profile_relationships(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                    relationship_type=relationship,
+                    profiles=records,
+                    fetched_at=relationships_time,
+                )
+                _invalidate_relationship_cache_entry(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                    relationship_type=relationship,
+                    reason="replaced_by_new_fetch",
+                    invalidated_at=relationships_time,
+                )
+                cache_file_path = relationship_cache.write_relationship_cache_file(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                    relationship_type=relationship,
+                    fetched_at=relationships_time,
+                    profiles_payload=[asdict(item) for item in records],
+                )
+                db_service.create_target_profile_list_cache_entry(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                    relationship_type=relationship,
+                    cache_file_path=cache_file_path,
+                    fetched_at=relationships_time,
+                    source_count_at_fetch=_count_for_relationship_type(
+                        relationship,
+                        metadata_follower_count,
+                        metadata_following_count,
+                    ),
+                )
+            except Exception as exc:
+                fetch_status = "partial"
+                last_error = str(exc)
+    else:
+        # Skip relationship fetching; status remains "metadata_only" until relationships are fetched
+        fetch_status = "metadata_only"
 
     cache_summary = db_service.get_target_profile_relationship_cache_summary(
         app_user_id=app_user_id,
@@ -958,6 +1003,7 @@ def refresh_followback_prediction(
         reference_profile_id=reference_profile_id,
         app_user_id=app_user_id,
         metadata=metadata,
+        include_overlap=fetch_relationships,
     )
     computed_at = datetime.now().isoformat()
     result["used_fresh_fetch"] = True

@@ -91,6 +91,24 @@ const targetProfile = computed(() => {
     return payload?.target_profile ?? null;
 });
 
+const ambiguousProbability = computed(() => {
+    const payload = prediction.value?.result_payload as {
+        ambiguous_probability?: boolean;
+    } | null;
+    return payload?.ambiguous_probability ?? false;
+});
+
+const canFetchOverlap = computed(() => {
+    const payload = prediction.value?.result_payload as {
+        can_fetch_overlap?: boolean;
+    } | null;
+    return payload?.can_fetch_overlap ?? false;
+});
+
+const showNeedsOverlapData = computed(() => {
+    return ambiguousProbability.value && canFetchOverlap.value;
+});
+
 const instagramProfileUrl = computed(() => {
     const username = prediction.value?.target_username?.trim();
     if (!username) {
@@ -159,7 +177,11 @@ async function loadPrediction(username: string) {
         await loadRelationshipCacheStatus(false);
 
         if (!response.task) {
-            statusMessage.value = "Prediction is ready.";
+            if (showNeedsOverlapData.value) {
+                statusMessage.value = "Prediction is ambiguous (45-65%). Fetch followers/following overlap for clarity.";
+            } else {
+                statusMessage.value = "Prediction is ready.";
+            }
             return;
         }
 
@@ -444,6 +466,12 @@ async function submitFeedback() {
                             :confidence="prediction.confidence"
                             size="lg"
                         />
+                        <span
+                            v-if="showNeedsOverlapData"
+                            class="inline-block mt-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/25"
+                        >
+                            Ambiguous — needs overlap data
+                        </span>
                     </div>
                     <div class="mt-4 flex flex-wrap gap-2">
                         <button
@@ -500,6 +528,26 @@ async function submitFeedback() {
                         Detailed target metadata is still loading. If this user
                         has not been refreshed yet, wait for the task to finish.
                     </p>
+
+                    <div
+                        v-if="showNeedsOverlapData"
+                        class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 mt-4"
+                    >
+                        <p class="text-sm font-semibold text-amber-300 mb-3">
+                            Prediction is ambiguous (45-65% range)
+                        </p>
+                        <p class="text-sm text-amber-100 mb-3">
+                            Fetch the followers and following lists to analyze overlap with your audience
+                            for a more confident prediction.
+                        </p>
+                        <button
+                            :disabled="isLoading || listRefreshPending.followers || listRefreshPending.following"
+                            class="btn-violet px-3 py-1.5 rounded-lg text-sm font-semibold disabled:opacity-50"
+                            @click="async () => { await refreshRelationshipList('followers'); await refreshRelationshipList('following'); }"
+                        >
+                            Fetch followers & following for details
+                        </button>
+                    </div>
 
                     <div
                         v-if="relationshipCache"

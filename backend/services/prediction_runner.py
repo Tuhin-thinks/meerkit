@@ -108,6 +108,7 @@ def enqueue_prediction_refresh(
     instagram_user: dict,
     refresh_requested: bool,
     relationship_type: str | None = None,
+    fetch_relationships: bool = True,
 ) -> dict:
     task_type = (
         f"prediction_refresh_{relationship_type}"
@@ -129,6 +130,7 @@ def enqueue_prediction_refresh(
             "prediction_id": prediction_id,
             "instagram_user": instagram_user,
             "relationship_type": relationship_type,
+            "fetch_relationships": fetch_relationships,
         }
     )
     return task

@@ -40,6 +40,7 @@ def start_prediction_worker() -> None:
                     prediction_id=prediction_id,
                     instagram_user=item["instagram_user"],
                     relationship_type=item.get("relationship_type"),
+                    fetch_relationships=item.get("fetch_relationships", True),
                 )
                 prediction_runner.mark_task_completed(task_id)
             except Exception as exc:

@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import threading
 from dataclasses import asdict
 from datetime import datetime, timedelta
@@ -11,16 +12,38 @@ from backend.config import DIFFS_DIR, app_user_db
 from backend.db.db_handler import SqliteDBHandler
 
 _thread_local = threading.local()
+logger = logging.getLogger(__name__)
 
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+class _SerializableEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles non-serializable types and logs warnings."""
+
+    def default(self, o: object) -> object:
+        if isinstance(o, set):
+            logger.warning(f"Converting set to list during JSON encoding. Set: {o!r}")
+            return list(o)
+        elif isinstance(o, (bytes, bytearray)):
+            logger.warning(
+                f"Converting bytes/bytearray to string during JSON encoding: {type(o).__name__}"
+            )
+            return o.hex()
+        elif hasattr(o, "__dict__"):
+            logger.warning(
+                f"Converting {type(o).__name__} object to dict during JSON encoding"
+            )
+            return asdict(o) if hasattr(o, "__dataclass_fields__") else o.__dict__
+        # Fall back to default behavior for other types
+        return super().default(o)
+
+
 def _json_dumps(payload: dict | list | None) -> str | None:
     if payload is None:
         return None
-    return json.dumps(payload)
+    return json.dumps(payload, cls=_SerializableEncoder)
 
 
 def _json_loads(payload: str | None) -> dict | list | None:
