@@ -18,6 +18,7 @@ IMAGE_DOWNLOAD_DELAY_SECONDS = lambda: random.randint(1, 3)
 # Maximum worker threads per queue consumer.
 MAX_IMAGE_DOWNLOAD_WORKERS = 10
 MAX_PREDICTION_REFRESH_WORKERS = 3
+MAX_AUTOMATION_WORKERS = 1
 
 # Create directories on import so nothing needs to worry about them not existing
 for _d in [DATA_DIR, USERS_DIR, SCANS_DIR, DIFFS_DIR, IMAGE_CACHE_DIR]:

@@ -237,6 +237,76 @@ CREATE INDEX IF NOT EXISTS idx_instagram_api_usage_caller
 ON instagram_api_usage_events (app_user_id, caller_service, caller_method, called_at);
 """
 
+# ── Automation ─────────────────────────────────────────────────────────────────
+
+AUTOMATION_ACTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_actions (
+    action_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    config_json TEXT,
+    total_items INTEGER NOT NULL DEFAULT 0,
+    completed_items INTEGER NOT NULL DEFAULT 0,
+    failed_items INTEGER NOT NULL DEFAULT 0,
+    skipped_items INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    queued_at TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    create_date TEXT NOT NULL,
+    update_date TEXT NOT NULL
+);"""
+
+AUTOMATION_ACTION_ITEMS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_action_items (
+    item_id TEXT PRIMARY KEY,
+    action_id TEXT NOT NULL,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    raw_input TEXT NOT NULL,
+    normalized_username TEXT,
+    normalized_user_id TEXT,
+    display_username TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    exclusion_reason TEXT,
+    result_json TEXT,
+    executed_at TEXT,
+    error TEXT,
+    create_date TEXT NOT NULL,
+    update_date TEXT NOT NULL
+);"""
+
+AUTOMATION_SAFELISTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_safelists (
+    safelist_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    list_type TEXT NOT NULL,
+    raw_input TEXT NOT NULL,
+    normalized_username TEXT,
+    normalized_user_id TEXT,
+    identity_key TEXT NOT NULL,
+    create_date TEXT NOT NULL,
+    UNIQUE (app_user_id, reference_profile_id, list_type, identity_key)
+);"""
+
+AUTOMATION_ACTIONS_SCOPE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_automation_actions_scope
+ON automation_actions (app_user_id, reference_profile_id, status, create_date);
+"""
+
+AUTOMATION_ACTION_ITEMS_ACTION_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_automation_action_items_action
+ON automation_action_items (action_id, status);
+"""
+
+AUTOMATION_SAFELISTS_SCOPE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_automation_safelists_scope
+ON automation_safelists (app_user_id, reference_profile_id, list_type);
+"""
+
 
 schema_collection = {
     "accounts": ACCOUNTS_SCHEMA,
@@ -259,4 +329,10 @@ schema_collection = {
     "idx_prediction_assessments_prediction": PREDICTION_ASSESSMENTS_PREDICTION_INDEX,
     "idx_instagram_api_usage_scope": INSTAGRAM_API_USAGE_SCOPE_INDEX,
     "idx_instagram_api_usage_caller": INSTAGRAM_API_USAGE_CALLER_INDEX,
+    "automation_actions": AUTOMATION_ACTIONS_SCHEMA,
+    "automation_action_items": AUTOMATION_ACTION_ITEMS_SCHEMA,
+    "automation_safelists": AUTOMATION_SAFELISTS_SCHEMA,
+    "idx_automation_actions_scope": AUTOMATION_ACTIONS_SCOPE_INDEX,
+    "idx_automation_action_items_action": AUTOMATION_ACTION_ITEMS_ACTION_INDEX,
+    "idx_automation_safelists_scope": AUTOMATION_SAFELISTS_SCOPE_INDEX,
 }

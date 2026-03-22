@@ -205,9 +205,9 @@ def follow_user(
             f"{instagram_profile_link}, attempts left: {retry_count}"
         )
 
-    # user_id = _resolve_user_pk(username, profile)
     username = _extract_username_from_profile_link(instagram_profile_link)
-    user_id = profile.user_id
+    # Resolve the *target* user's pk — not the logged-in account's own id.
+    user_id = resolve_target_user_pk(username, profile)
 
     if not isinstance(user_id, str) or not user_id:
         print(
@@ -216,10 +216,19 @@ def follow_user(
         )
         return -1
 
-    print(f"Following user: {username} ({user_id})")
+    return follow_user_by_id(user_id, username, profile)
+
+
+def follow_user_by_id(
+    target_user_id: str,
+    target_username: str,
+    profile: InstagramProfile,
+) -> int:
+    """Follow an Instagram user by their numeric user ID using GraphQL mutation."""
+    print(f"Following user: {target_username} ({target_user_id})")
 
     variables = {
-        "target_user_id": user_id,
+        "target_user_id": target_user_id,
         "container_module": "profile",
         "nav_chain": "PolarisProfilePostsTabRoot:profilePage:1:via_cold_start",
     }
@@ -228,7 +237,7 @@ def follow_user(
         **_headers(profile),
         "content-type": "application/x-www-form-urlencoded",
         "origin": "https://www.instagram.com",
-        "referer": f"https://www.instagram.com/{username}/",
+        "referer": f"https://www.instagram.com/{target_username}/",
         "x-fb-friendly-name": "usePolarisFollowMutation",
         "x-fb-lsd": _follow_lsd,
         "x-root-field-name": "xdt_create_friendship",
@@ -260,7 +269,47 @@ def follow_user(
 
     print(
         "Failed to follow "
-        f"{instagram_profile_link}. Status code: {response.status_code}"
+        f"{target_username} ({target_user_id}). Status code: {response.status_code}"
+    )
+    return -1
+
+
+def unfollow_user_by_id(
+    target_user_id: str,
+    target_username: str,
+    profile: InstagramProfile,
+) -> int:
+    """Unfollow an Instagram user by their numeric user ID using GraphQL mutation."""
+    print(f"Unfollowing user: {target_username} ({target_user_id})")
+
+    variables = {
+        "target_user_id": target_user_id,
+        "container_module": "profile",
+        "nav_chain": "PolarisProfilePostsTabRoot:profilePage:1:via_cold_start",
+    }
+
+    data = {
+        "variables": json.dumps(variables),
+        "doc_id": "9846833695423773",
+    }
+
+    response = requests.post(
+        url,
+        headers=_headers(profile),
+        cookies=_cookies(profile),
+        data=data,
+    )
+    print(response.status_code)
+    try:
+        print(response.json())
+    except ValueError:
+        print(response.text)
+
+    if response.status_code == 200:
+        return 1
+
+    print(
+        f"Failed to unfollow {target_username} ({target_user_id}). Status code: {response.status_code}"
     )
     return -1
 

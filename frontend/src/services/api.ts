@@ -18,6 +18,12 @@ import type {
   PredictionTask,
   TaskListResponse,
 } from '../types/prediction'
+import type {
+  FollowingUsersResponse,
+  AutomationAction,
+  AutomationActionResult,
+  SafelistResponse,
+} from '../types/automation'
 
 const http = axios.create({
   baseURL: '/api',
@@ -203,6 +209,91 @@ export const cancelPredictionTask = (taskId: string) =>
 export const cancelScan = () =>
   http
     .post<{ ok: boolean; status: string; message: string }>('/scan/cancel', null, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+// ── Automation ─────────────────────────────────────────────────────────────────
+
+export const getAutomationFollowingUsers = () =>
+  http
+    .get<FollowingUsersResponse>('/automation/following-users', {
+      params: { profile_id: activeInstagramUserId },
+      timeout: 180_000,
+    })
+    .then((r) => r.data)
+
+export const prepareBatchFollow = (payload: {
+  candidates: string[]
+  do_not_follow?: string[]
+  max_follow_count?: number
+  skip_private?: boolean
+  skip_no_recent_interaction?: boolean
+}) =>
+  http
+    .post<AutomationActionResult>('/automation/batch-follow/prepare', payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const prepareBatchUnfollow = (payload: {
+  candidates?: string[]
+  never_unfollow?: string[]
+  max_unfollow_count?: number
+  skip_mutual?: boolean
+  skip_recent?: boolean
+  use_auto_discovery?: boolean
+}) =>
+  http
+    .post<AutomationActionResult>('/automation/batch-unfollow/prepare', payload, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const confirmAutomationAction = (actionId: string) =>
+  http
+    .post<AutomationAction>(`/automation/actions/${actionId}/confirm`, null, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const cancelAutomationAction = (actionId: string) =>
+  http
+    .post<AutomationAction>(`/automation/actions/${actionId}/cancel`, null, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getAutomationAction = (actionId: string) =>
+  http
+    .get<AutomationAction>(`/automation/actions/${actionId}`, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const getAutomationSafelist = (listType: 'do_not_follow' | 'never_unfollow') =>
+  http
+    .get<SafelistResponse>(`/automation/safelists/${listType}`, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const addToAutomationSafelist = (
+  listType: 'do_not_follow' | 'never_unfollow',
+  lines: string[],
+) =>
+  http
+    .post<SafelistResponse>(`/automation/safelists/${listType}`, { lines }, {
+      params: { profile_id: activeInstagramUserId },
+    })
+    .then((r) => r.data)
+
+export const removeFromAutomationSafelist = (
+  listType: 'do_not_follow' | 'never_unfollow',
+  identityKey: string,
+) =>
+  http
+    .delete(`/automation/safelists/${listType}/${encodeURIComponent(identityKey)}`, {
       params: { profile_id: activeInstagramUserId },
     })
     .then((r) => r.data)

@@ -141,5 +141,88 @@ class InstagramGateway:
             execute=lambda: ii.get_current_followers_v2(profile=profile, store_data=False),
         )
 
+    def get_current_following_v2(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        profile: ii.InstagramProfile,
+        caller_service: str,
+        caller_method: str,
+    ) -> list[ii.FollowerUserRecord]:
+        return self._tracked(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            category="following_discovery",
+            caller_service=caller_service,
+            caller_method=caller_method,
+            execute=lambda: ii.get_current_following_v2(
+                profile=profile, store_data=False
+            ),
+        )
+
+    def follow_user_by_id(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        profile: ii.InstagramProfile,
+        target_user_id: str,
+        target_username: str,
+        caller_service: str,
+        caller_method: str,
+    ) -> int:
+        return self._tracked(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            category="action_follow",
+            caller_service=caller_service,
+            caller_method=caller_method,
+            execute=lambda: ii.follow_user_by_id(
+                target_user_id, target_username, profile
+            ),
+        )
+
+    def unfollow_user_by_id(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        profile: ii.InstagramProfile,
+        target_user_id: str,
+        target_username: str,
+        caller_service: str,
+        caller_method: str,
+    ) -> int:
+        return self._tracked(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            category="action_unfollow",
+            caller_service=caller_service,
+            caller_method=caller_method,
+            execute=lambda: ii.unfollow_user_by_id(
+                target_user_id, target_username, profile
+            ),
+        )
+
+    def resolve_target_user_pk_for_automation(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        profile: ii.InstagramProfile,
+        username: str,
+        caller_service: str,
+        caller_method: str,
+    ) -> str | None:
+        return self._tracked(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user_id,
+            category="user_lookup",
+            caller_service=caller_service,
+            caller_method=caller_method,
+            execute=lambda: ii.resolve_target_user_pk(username, profile),
+        )
+
 
 instagram_gateway = InstagramGateway()

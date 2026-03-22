@@ -5,3 +5,6 @@ image_download_queue: Queue[tuple[str, str, str, str]] = Queue()
 
 # prediction refresh queue stores dict payloads consumed by the prediction worker
 prediction_refresh_queue: Queue[dict] = Queue()
+
+# automation action queue stores dict payloads consumed by the automation worker
+automation_action_queue: Queue[dict] = Queue()

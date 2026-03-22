@@ -1716,3 +1716,341 @@ def get_instagram_api_usage_summary(
         },
         "accounts": accounts,
     }
+
+
+# ── Automation helpers ─────────────────────────────────────────────────────────
+
+
+def _normalize_action_row(row) -> dict | None:
+    if not row:
+        return None
+    result = dict(row)
+    result["config"] = _json_loads(result.pop("config_json", None))
+    return result
+
+
+def _normalize_action_item_row(row) -> dict | None:
+    if not row:
+        return None
+    result = dict(row)
+    result["result"] = _json_loads(result.pop("result_json", None))
+    return result
+
+
+def create_automation_action(
+    *,
+    action_id: str,
+    app_user_id: str,
+    reference_profile_id: str,
+    action_type: str,
+    status: str = "draft",
+    config: dict | None = None,
+) -> dict:
+    db = get_worker_db()
+    now = _now_iso()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO automation_actions (
+                action_id, app_user_id, reference_profile_id, action_type, status,
+                config_json, total_items, completed_items, failed_items, skipped_items,
+                create_date, update_date
+            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?)
+            """,
+            (
+                action_id,
+                app_user_id,
+                reference_profile_id,
+                action_type,
+                status,
+                _json_dumps(config),
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+    return get_automation_action(action_id)  # type: ignore[return-value]
+
+
+def get_automation_action(action_id: str) -> dict | None:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM automation_actions WHERE action_id = ?", (action_id,)
+        )
+        return _normalize_action_row(cursor.fetchone())
+
+
+def update_automation_action(action_id: str, **fields: object) -> None:
+    """Update scalar fields on an automation_action row."""
+    if not fields:
+        return
+    allowed = {
+        "status",
+        "total_items",
+        "completed_items",
+        "failed_items",
+        "skipped_items",
+        "error",
+        "queued_at",
+        "started_at",
+        "completed_at",
+        "config_json",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    updates["update_date"] = _now_iso()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE automation_actions SET {set_clause} WHERE action_id = ?",
+            (*updates.values(), action_id),
+        )
+        conn.commit()
+
+
+def list_automation_actions(
+    app_user_id: str,
+    reference_profile_id: str,
+    *,
+    statuses: list[str] | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        if statuses:
+            placeholders = ",".join("?" for _ in statuses)
+            cursor.execute(
+                f"""
+                SELECT * FROM automation_actions
+                WHERE app_user_id = ? AND reference_profile_id = ? AND status IN ({placeholders})
+                ORDER BY create_date DESC LIMIT ?
+                """,
+                (app_user_id, reference_profile_id, *statuses, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT * FROM automation_actions
+                WHERE app_user_id = ? AND reference_profile_id = ?
+                ORDER BY create_date DESC LIMIT ?
+                """,
+                (app_user_id, reference_profile_id, limit),
+            )
+        return [_normalize_action_row(r) for r in cursor.fetchall()]
+
+
+def list_recoverable_automation_actions(app_user_id: str) -> list[dict]:
+    """Return queued/running actions that should be re-enqueued on startup."""
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM automation_actions
+            WHERE app_user_id = ? AND status IN ('queued', 'running')
+            ORDER BY create_date ASC
+            """,
+            (app_user_id,),
+        )
+        return [_normalize_action_row(r) for r in cursor.fetchall()]
+
+
+def insert_automation_action_items(items: list[dict]) -> None:
+    """Bulk-insert staged action items."""
+    if not items:
+        return
+    db = get_worker_db()
+    now = _now_iso()
+    rows = [
+        (
+            item["item_id"],
+            item["action_id"],
+            item["app_user_id"],
+            item["reference_profile_id"],
+            item["raw_input"],
+            item.get("normalized_username"),
+            item.get("normalized_user_id"),
+            item.get("display_username"),
+            item.get("status", "pending"),
+            item.get("exclusion_reason"),
+            now,
+            now,
+        )
+        for item in items
+    ]
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.executemany(
+            """
+            INSERT INTO automation_action_items (
+                item_id, action_id, app_user_id, reference_profile_id,
+                raw_input, normalized_username, normalized_user_id, display_username,
+                status, exclusion_reason, create_date, update_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.commit()
+
+
+def list_automation_action_items(
+    action_id: str,
+    *,
+    statuses: list[str] | None = None,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        if statuses:
+            placeholders = ",".join("?" for _ in statuses)
+            cursor.execute(
+                f"""
+                SELECT * FROM automation_action_items
+                WHERE action_id = ? AND status IN ({placeholders})
+                ORDER BY create_date ASC
+                """,
+                (action_id, *statuses),
+            )
+        else:
+            cursor.execute(
+                "SELECT * FROM automation_action_items WHERE action_id = ? ORDER BY create_date ASC",
+                (action_id,),
+            )
+        return [_normalize_action_item_row(r) for r in cursor.fetchall()]
+
+
+def update_automation_action_item(item_id: str, **fields: object) -> None:
+    allowed = {
+        "status",
+        "exclusion_reason",
+        "result_json",
+        "executed_at",
+        "error",
+        "display_username",
+        "normalized_username",
+        "normalized_user_id",
+    }
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return
+    updates["update_date"] = _now_iso()
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE automation_action_items SET {set_clause} WHERE item_id = ?",
+            (*updates.values(), item_id),
+        )
+        conn.commit()
+
+
+def upsert_safelist_entry(
+    *,
+    safelist_id: str,
+    app_user_id: str,
+    reference_profile_id: str,
+    list_type: str,
+    raw_input: str,
+    normalized_username: str | None,
+    normalized_user_id: str | None,
+    identity_key: str,
+) -> dict:
+    db = get_worker_db()
+    now = _now_iso()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO automation_safelists (
+                safelist_id, app_user_id, reference_profile_id, list_type,
+                raw_input, normalized_username, normalized_user_id, identity_key, create_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (app_user_id, reference_profile_id, list_type, identity_key)
+            DO UPDATE SET raw_input = excluded.raw_input
+            """,
+            (
+                safelist_id,
+                app_user_id,
+                reference_profile_id,
+                list_type,
+                raw_input,
+                normalized_username,
+                normalized_user_id,
+                identity_key,
+                now,
+            ),
+        )
+        conn.commit()
+        cursor.execute(
+            """
+            SELECT * FROM automation_safelists
+            WHERE app_user_id = ? AND reference_profile_id = ? AND list_type = ? AND identity_key = ?
+            """,
+            (app_user_id, reference_profile_id, list_type, identity_key),
+        )
+        return dict(cursor.fetchone())
+
+
+def list_safelist_entries(
+    app_user_id: str,
+    reference_profile_id: str,
+    list_type: str,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM automation_safelists
+            WHERE app_user_id = ? AND reference_profile_id = ? AND list_type = ?
+            ORDER BY create_date ASC
+            """,
+            (app_user_id, reference_profile_id, list_type),
+        )
+        return [dict(r) for r in cursor.fetchall()]
+
+
+def delete_safelist_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    list_type: str,
+    identity_key: str,
+) -> bool:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            DELETE FROM automation_safelists
+            WHERE app_user_id = ? AND reference_profile_id = ? AND list_type = ? AND identity_key = ?
+            """,
+            (app_user_id, reference_profile_id, list_type, identity_key),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_safelist_identity_keys(
+    app_user_id: str,
+    reference_profile_id: str,
+    list_type: str,
+) -> set[str]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT identity_key FROM automation_safelists
+            WHERE app_user_id = ? AND reference_profile_id = ? AND list_type = ?
+            """,
+            (app_user_id, reference_profile_id, list_type),
+        )
+        return {row["identity_key"] for row in cursor.fetchall()}

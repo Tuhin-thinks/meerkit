@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
+import {
+    cancelAutomationAction,
+    confirmAutomationAction,
+    getAutomationAction,
+    prepareBatchFollow,
+} from "../services/api";
+import type { AutomationAction, AutomationActionResult } from "../types/automation";
 
 const props = defineProps<{
     profileId: string;
@@ -39,10 +46,7 @@ function parseUniqueEntries(raw: string) {
     );
 }
 
-const parsedTargets = computed(() => {
-    return parseUniqueEntries(targetInput.value);
-});
-
+const parsedTargets = computed(() => parseUniqueEntries(targetInput.value));
 const doNotFollowAccounts = computed(() =>
     parseUniqueEntries(doNotFollowInput.value),
 );
@@ -57,6 +61,128 @@ const estimatedSelected = computed(() => {
         0,
     );
     return Math.min(maxFollowCount.value, Math.round(candidateCount * ratio));
+});
+
+// ── Action lifecycle ───────────────────────────────────────────────────
+
+type Phase =
+    | "idle"
+    | "preparing"
+    | "staged"
+    | "confirming"
+    | "running"
+    | "completed"
+    | "error";
+
+const phase = ref<Phase>("idle");
+const stagedResult = ref<AutomationActionResult | null>(null);
+const currentAction = ref<AutomationAction | null>(null);
+const actionError = ref<string | null>(null);
+let pollTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const hasCandidates = computed(() => parsedTargets.value.length > 0);
+
+const runningProgress = computed(() => {
+    if (!currentAction.value || !currentAction.value.total_items) return 0;
+    return Math.round(
+        (currentAction.value.completed_items /
+            currentAction.value.total_items) *
+            100,
+    );
+});
+
+async function prepare() {
+    if (!hasCandidates.value) return;
+    phase.value = "preparing";
+    actionError.value = null;
+    try {
+        const result = await prepareBatchFollow({
+            candidates: parsedTargets.value,
+            do_not_follow: doNotFollowAccounts.value,
+            max_follow_count: maxFollowCount.value,
+            skip_private: !includePrivateAccounts.value,
+            skip_no_recent_interaction: respectRecentInteractions.value,
+        });
+        stagedResult.value = result;
+        phase.value = "staged";
+    } catch (err: unknown) {
+        actionError.value =
+            err instanceof Error
+                ? err.message
+                : "Failed to prepare batch follow";
+        phase.value = "error";
+    }
+}
+
+async function confirm() {
+    if (!stagedResult.value) return;
+    phase.value = "confirming";
+    actionError.value = null;
+    try {
+        await confirmAutomationAction(stagedResult.value.action_id);
+        phase.value = "running";
+        schedulePoll(stagedResult.value.action_id);
+    } catch (err: unknown) {
+        actionError.value =
+            err instanceof Error ? err.message : "Failed to confirm action";
+        phase.value = "error";
+    }
+}
+
+function schedulePoll(actionId: string) {
+    if (pollTimeout) clearTimeout(pollTimeout);
+    pollTimeout = setTimeout(() => poll(actionId), 2500);
+}
+
+async function poll(actionId: string) {
+    try {
+        const action = await getAutomationAction(actionId);
+        currentAction.value = action;
+        if (action.status === "completed") {
+            phase.value = "completed";
+        } else if (
+            action.status === "error" ||
+            action.status === "cancelled"
+        ) {
+            actionError.value = action.error ?? "Action ended unexpectedly";
+            phase.value = "error";
+        } else {
+            schedulePoll(actionId);
+        }
+    } catch {
+        schedulePoll(actionId);
+    }
+}
+
+async function cancel() {
+    const actionId =
+        stagedResult.value?.action_id ?? currentAction.value?.action_id;
+    if (!actionId) return;
+    if (pollTimeout) {
+        clearTimeout(pollTimeout);
+        pollTimeout = null;
+    }
+    try {
+        await cancelAutomationAction(actionId);
+    } catch {
+        // best-effort
+    }
+    reset();
+}
+
+function reset() {
+    if (pollTimeout) {
+        clearTimeout(pollTimeout);
+        pollTimeout = null;
+    }
+    phase.value = "idle";
+    stagedResult.value = null;
+    currentAction.value = null;
+    actionError.value = null;
+}
+
+onUnmounted(() => {
+    if (pollTimeout) clearTimeout(pollTimeout);
 });
 
 function goBack() {
@@ -238,55 +364,272 @@ function goBack() {
                             v-model="respectRecentInteractions"
                             type="checkbox"
                             class="h-4 w-4 accent-cyan-400"
+                            :disabled="phase !== 'idle'"
                         />
                     </label>
                 </div>
 
+                <!-- Status / Preview panel -->
                 <div
                     class="mt-6 rounded-xl ibf-summary border border-cyan-300/25 p-4"
                 >
-                    <p class="text-xs uppercase tracking-wide text-cyan-100/80">
-                        Preview
-                    </p>
-                    <p class="text-sm text-slate-100 mt-1">
-                        Users scoring at least
-                        <strong>{{ minProbability }}%</strong> will be
-                        auto-selected for confirmation.
-                    </p>
-                    <p class="text-sm text-slate-300 mt-1">
-                        Accounts excluded from follow:
-                        <strong class="text-amber-200">{{
-                            doNotFollowAccounts.length
-                        }}</strong>
-                    </p>
-                    <p class="text-sm text-slate-300 mt-1">
-                        Estimated selected:
-                        <strong class="text-emerald-300">{{
-                            estimatedSelected
-                        }}</strong>
-                        of {{ parsedTargets.length }} targets
-                    </p>
+                    <!-- Idle -->
+                    <template v-if="phase === 'idle'">
+                        <p
+                            class="text-xs uppercase tracking-wide text-cyan-100/80"
+                        >
+                            Preview
+                        </p>
+                        <p class="text-sm text-slate-100 mt-1">
+                            Users scoring at least
+                            <strong>{{ minProbability }}%</strong> will be
+                            auto-selected for confirmation.
+                        </p>
+                        <p class="text-sm text-slate-300 mt-1">
+                            Accounts excluded from follow:
+                            <strong class="text-amber-200">{{
+                                doNotFollowAccounts.length
+                            }}</strong>
+                        </p>
+                        <p class="text-sm text-slate-300 mt-1">
+                            Estimated selected:
+                            <strong class="text-emerald-300">{{
+                                estimatedSelected
+                            }}</strong>
+                            of {{ parsedTargets.length }} targets
+                        </p>
+                    </template>
+
+                    <!-- Preparing -->
+                    <template v-else-if="phase === 'preparing'">
+                        <p
+                            class="text-xs uppercase tracking-wide text-slate-300/80"
+                        >
+                            Preparing…
+                        </p>
+                        <p
+                            class="text-sm text-slate-300 mt-2 animate-pulse"
+                        >
+                            Normalising candidates and applying exclusion
+                            rules…
+                        </p>
+                    </template>
+
+                    <!-- Staged -->
+                    <template v-else-if="phase === 'staged' && stagedResult">
+                        <p
+                            class="text-xs uppercase tracking-wide text-emerald-300/85"
+                        >
+                            ✓ Ready to Execute
+                        </p>
+                        <p class="text-sm text-slate-100 mt-2">
+                            <strong class="text-cyan-300">{{
+                                stagedResult.selected_count
+                            }}</strong>
+                            accounts queued for follow
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            {{ stagedResult.excluded_count }} excluded by
+                            do-not-follow rules
+                        </p>
+                        <div
+                            v-if="stagedResult.selected_items.length"
+                            class="mt-3 max-h-32 overflow-y-auto space-y-1"
+                        >
+                            <p
+                                v-for="item in stagedResult.selected_items.slice(
+                                    0,
+                                    10,
+                                )"
+                                :key="item.raw_input"
+                                class="text-xs text-slate-300"
+                            >
+                                @{{
+                                    item.display_username ?? item.raw_input
+                                }}
+                            </p>
+                            <p
+                                v-if="stagedResult.selected_items.length > 10"
+                                class="text-xs text-slate-500"
+                            >
+                                …and
+                                {{
+                                    stagedResult.selected_items.length - 10
+                                }}
+                                more
+                            </p>
+                        </div>
+                    </template>
+
+                    <!-- Confirming -->
+                    <template v-else-if="phase === 'confirming'">
+                        <p
+                            class="text-xs uppercase tracking-wide text-slate-300/80"
+                        >
+                            Queueing…
+                        </p>
+                        <p
+                            class="text-sm text-slate-300 mt-2 animate-pulse"
+                        >
+                            Sending action to background worker…
+                        </p>
+                    </template>
+
+                    <!-- Running -->
+                    <template v-else-if="phase === 'running'">
+                        <p
+                            class="text-xs uppercase tracking-wide text-cyan-300/85"
+                        >
+                            Running
+                        </p>
+                        <template v-if="currentAction">
+                            <p class="text-sm text-slate-100 mt-2">
+                                <strong class="text-cyan-300">{{
+                                    currentAction.completed_items
+                                }}</strong>
+                                / {{ currentAction.total_items }} followed
+                            </p>
+                            <p
+                                v-if="currentAction.failed_items"
+                                class="text-xs text-amber-300 mt-1"
+                            >
+                                {{ currentAction.failed_items }} failed
+                            </p>
+                            <div
+                                class="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden"
+                            >
+                                <div
+                                    class="h-full bg-cyan-500 transition-all duration-700"
+                                    :style="{
+                                        width: `${runningProgress}%`,
+                                    }"
+                                />
+                            </div>
+                        </template>
+                        <p
+                            v-else
+                            class="text-sm text-slate-300 mt-2 animate-pulse"
+                        >
+                            Waiting for worker…
+                        </p>
+                    </template>
+
+                    <!-- Completed -->
+                    <template
+                        v-else-if="phase === 'completed' && currentAction"
+                    >
+                        <p
+                            class="text-xs uppercase tracking-wide text-emerald-300/85"
+                        >
+                            ✓ Completed
+                        </p>
+                        <p class="text-sm text-slate-100 mt-2">
+                            <strong class="text-emerald-300">{{
+                                currentAction.completed_items
+                            }}</strong>
+                            accounts followed
+                        </p>
+                        <p
+                            v-if="currentAction.failed_items"
+                            class="text-xs text-amber-300 mt-1"
+                        >
+                            {{ currentAction.failed_items }} could not be
+                            followed
+                        </p>
+                    </template>
+
+                    <!-- Error -->
+                    <template v-else-if="phase === 'error'">
+                        <p
+                            class="text-xs uppercase tracking-wide text-rose-300/85"
+                        >
+                            Error
+                        </p>
+                        <p class="text-sm text-rose-200 mt-2">
+                            {{
+                                actionError ?? "An unexpected error occurred."
+                            }}
+                        </p>
+                    </template>
                 </div>
 
+                <!-- Action buttons -->
                 <div class="mt-6 grid sm:grid-cols-2 gap-3">
-                    <button
-                        class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold opacity-80 cursor-not-allowed"
-                        disabled
-                    >
-                        Confirm Batch Follow
-                    </button>
-                    <button
-                        class="btn-ghost rounded-xl px-4 py-2.5 text-sm font-semibold opacity-80 cursor-not-allowed"
-                        disabled
-                    >
-                        Start Background Task
-                    </button>
-                </div>
+                    <!-- Idle -->
+                    <template v-if="phase === 'idle'">
+                        <button
+                            class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2"
+                            :class="{
+                                'opacity-50 cursor-not-allowed': !hasCandidates,
+                            }"
+                            :disabled="!hasCandidates"
+                            @click="prepare"
+                        >
+                            Prepare Batch Follow
+                        </button>
+                    </template>
 
-                <p class="text-xs text-amber-300/90 mt-3">
-                    Backend integration pending: buttons are intentionally
-                    disabled for now.
-                </p>
+                    <!-- Preparing -->
+                    <template v-else-if="phase === 'preparing'">
+                        <button
+                            class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2 opacity-60 cursor-not-allowed"
+                            disabled
+                        >
+                            Preparing…
+                        </button>
+                    </template>
+
+                    <!-- Staged -->
+                    <template v-else-if="phase === 'staged'">
+                        <button
+                            class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold"
+                            :class="{
+                                'opacity-50 cursor-not-allowed':
+                                    !stagedResult?.selected_count,
+                            }"
+                            :disabled="!stagedResult?.selected_count"
+                            @click="confirm"
+                        >
+                            Confirm &amp; Execute
+                        </button>
+                        <button
+                            class="btn-ghost rounded-xl px-4 py-2.5 text-sm font-semibold"
+                            @click="reset"
+                        >
+                            Start Over
+                        </button>
+                    </template>
+
+                    <!-- Confirming -->
+                    <template v-else-if="phase === 'confirming'">
+                        <button
+                            class="btn-violet rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2 opacity-60 cursor-not-allowed"
+                            disabled
+                        >
+                            Queueing…
+                        </button>
+                    </template>
+
+                    <!-- Running -->
+                    <template v-else-if="phase === 'running'">
+                        <button
+                            class="btn-ghost rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2"
+                            @click="cancel"
+                        >
+                            Cancel
+                        </button>
+                    </template>
+
+                    <!-- Completed or Error -->
+                    <template v-else>
+                        <button
+                            class="btn-ghost rounded-xl px-4 py-2.5 text-sm font-semibold col-span-2"
+                            @click="reset"
+                        >
+                            Start Over
+                        </button>
+                    </template>
+                </div>
             </section>
         </div>
     </section>

@@ -4,7 +4,7 @@ from typing import cast
 from flask import Blueprint, jsonify, request
 
 from backend.routes import get_active_context
-from backend.services import prediction_runner, scan_runner
+from backend.services import automation_runner, prediction_runner, scan_runner
 
 bp = Blueprint("tasks", __name__, url_prefix="/api")
 _MAX_TASKS = 10
@@ -49,6 +49,11 @@ def list_tasks():
         if active_scan_task.get("task_id") not in scan_task_ids:
             scan_tasks.append(active_scan_task)
 
+    automation_actions = automation_runner.list_active_actions(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+    )
+
     normalized_prediction_tasks = [
         {
             "task_id": task["task_id"],
@@ -69,8 +74,32 @@ def list_tasks():
         for task in prediction_tasks
     ]
 
+    normalized_automation_tasks = [
+        {
+            "task_id": action["action_id"],
+            "task_type": action.get("action_type") or "automation",
+            "source": "automation",
+            "status": action.get("status"),
+            "progress": None,
+            "error": action.get("error"),
+            "queued_at": action.get("queued_at"),
+            "started_at": action.get("started_at"),
+            "completed_at": action.get("completed_at"),
+            "target_profile_id": None,
+            "target_username": None,
+            "can_cancel": action.get("status") in {"queued", "running", "staged"},
+            "metric_label": "items_completed",
+            "metric_value": (action.get("completed_items") or 0),
+            "total_items": action.get("total_items") or 0,
+            "completed_items": action.get("completed_items") or 0,
+            "failed_items": action.get("failed_items") or 0,
+            "skipped_items": action.get("skipped_items") or 0,
+        }
+        for action in automation_actions
+    ]
+
     tasks = sorted(
-        [*normalized_prediction_tasks, *scan_tasks],
+        [*normalized_prediction_tasks, *scan_tasks, *normalized_automation_tasks],
         key=lambda item: item.get("started_at") or item.get("queued_at") or "",
         reverse=True,
     )
