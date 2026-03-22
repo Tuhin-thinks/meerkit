@@ -14,12 +14,15 @@ Endpoints:
   DELETE /api/automation/safelists/<list_type>/<key> — Remove one safelist entry
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from threading import local
 from typing import cast
 
 from flask import Blueprint, jsonify, request
 
+from backend import config as backend_config
 from backend.config import CACHE_DIR
 from backend.routes import get_active_context
 from backend.services import automation_runner, db_service
@@ -43,6 +46,7 @@ _READ_USAGE_CATEGORIES = {
     "followers_discovery",
     "following_discovery",
 }
+_THREAD_LOCAL_PROFILE = local()
 
 
 def _active_scope() -> tuple[str | None, dict | tuple[dict, int]]:
@@ -260,6 +264,14 @@ def get_following_users():
         return jsonify({"error": f"Failed to fetch following list: {exc}"}), 502
 
     follower_ids = {record.pk_id for record in follower_records}
+    user_count_map = _load_following_user_counts_bulk(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        instagram_user=instagram_user,
+        user_ids=[r.pk_id for r in following_records],
+        force_refresh=force_refresh,
+    )
+
     users = [
         {
             "user_id": r.pk_id,
@@ -268,12 +280,9 @@ def get_following_users():
             "is_private": r.is_private,
             "profile_pic_url": r.profile_pic_url,
             "follows_you": r.pk_id in follower_ids,
-            **_load_following_user_counts(
-                app_user_id=app_user_id,
-                reference_profile_id=reference_profile_id,
-                profile=profile,
-                user_id=r.pk_id,
-                force_refresh=force_refresh,
+            **user_count_map.get(
+                r.pk_id,
+                {"follower_count": None, "following_count": None},
             ),
         }
         for r in following_records
@@ -317,6 +326,73 @@ def _load_following_user_counts(
         if isinstance(following_count, int)
         else None,
     }
+
+
+def _load_following_user_counts_bulk(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    instagram_user: dict,
+    user_ids: list[str],
+    force_refresh: bool,
+) -> dict[str, dict[str, int | None]]:
+    unique_user_ids = list(dict.fromkeys(user_ids))
+    if not unique_user_ids:
+        return {}
+
+    configured_max = int(
+        getattr(backend_config, "MAX_USER_DETAILS_FETCH_THREADS", 8) or 8
+    )
+    max_workers = max(1, min(configured_max, len(unique_user_ids)))
+    if max_workers == 1:
+        profile = _build_profile(instagram_user)
+        return {
+            user_id: _load_following_user_counts(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                profile=profile,
+                user_id=user_id,
+                force_refresh=force_refresh,
+            )
+            for user_id in unique_user_ids
+        }
+
+    def _fetch_counts(user_id: str) -> tuple[str, dict[str, int | None]]:
+        profile = getattr(_THREAD_LOCAL_PROFILE, "profile", None)
+        profile_owner = getattr(_THREAD_LOCAL_PROFILE, "profile_owner", None)
+        if profile is None or profile_owner != reference_profile_id:
+            profile = _build_profile(instagram_user)
+            _THREAD_LOCAL_PROFILE.profile = profile
+            _THREAD_LOCAL_PROFILE.profile_owner = reference_profile_id
+        return (
+            user_id,
+            _load_following_user_counts(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                profile=profile,
+                user_id=user_id,
+                force_refresh=force_refresh,
+            ),
+        )
+
+    counts_by_user: dict[str, dict[str, int | None]] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_fetch_counts, user_id): user_id
+            for user_id in unique_user_ids
+        }
+        for future in as_completed(futures):
+            user_id = futures[future]
+            try:
+                result_user_id, result_counts = future.result()
+                counts_by_user[result_user_id] = result_counts
+            except Exception:
+                counts_by_user[user_id] = {
+                    "follower_count": None,
+                    "following_count": None,
+                }
+
+    return counts_by_user
 
 
 # ── Prepare: batch follow ──────────────────────────────────────────────────────

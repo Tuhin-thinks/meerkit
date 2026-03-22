@@ -6,6 +6,7 @@ prepare flows, and per-item execution delegates (called by the worker).
 """
 
 import re as _re
+import threading
 import time
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -22,6 +23,7 @@ from backend.services.instagram_gateway import instagram_gateway
 
 _USER_ID_RE = _re.compile(r"^\d+$")
 _USERNAME_RE = _re.compile(r"^[A-Za-z0-9._]+$")
+_THREAD_LOCAL = threading.local()
 
 
 # Delay between individual follow/unfollow actions (seconds).
@@ -505,7 +507,7 @@ def _resolve_item_user_id(
     if not username:
         return None
 
-    profile = _build_profile(instagram_user)
+    profile = _get_cached_profile(instagram_user)
     resolved = instagram_gateway.resolve_target_user_pk_for_automation(
         app_user_id=app_user_id,
         instagram_user_id=instagram_user["instagram_user_id"],
@@ -546,7 +548,7 @@ def execute_follow_item(
         or item.get("display_username")
         or target_user_id
     )
-    profile = _build_profile(instagram_user)
+    profile = _get_cached_profile(instagram_user)
 
     result_code = instagram_gateway.follow_user_by_id(
         app_user_id=app_user_id,
@@ -602,7 +604,7 @@ def execute_unfollow_item(
         or item.get("display_username")
         or target_user_id
     )
-    profile = _build_profile(instagram_user)
+    profile = _get_cached_profile(instagram_user)
 
     result_code = instagram_gateway.unfollow_user_by_id(
         app_user_id=app_user_id,
@@ -639,3 +641,19 @@ def inter_action_delay() -> None:
         0, _INTER_ACTION_JITTER_SECONDS
     )
     time.sleep(delay)
+
+
+def _get_cached_profile(instagram_user: dict) -> ii.InstagramProfile:
+    profile_cache = getattr(_THREAD_LOCAL, "profile_cache", None)
+    if not isinstance(profile_cache, dict):
+        profile_cache = {}
+        _THREAD_LOCAL.profile_cache = profile_cache
+
+    profile_key = str(instagram_user.get("instagram_user_id") or "")
+    cached_profile = profile_cache.get(profile_key)
+    if cached_profile is not None:
+        return cached_profile
+
+    profile = _build_profile(instagram_user)
+    profile_cache[profile_key] = profile
+    return profile

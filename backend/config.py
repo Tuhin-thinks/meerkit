@@ -14,12 +14,14 @@ IMAGE_CACHE_DIR = DATA_DIR / "image_cache"
 SCAN_INDEX_FILE = DATA_DIR / "scan_index.jsonl"
 
 # random delay range for image downloads to avoid overwhelming Instagram's servers
-IMAGE_DOWNLOAD_DELAY_SECONDS = lambda: random.randint(1, 3)
+def IMAGE_DOWNLOAD_DELAY_SECONDS() -> int:
+    return random.randint(1, 3)
 
 # Maximum worker threads per queue consumer.
 MAX_IMAGE_DOWNLOAD_WORKERS = 10
 MAX_PREDICTION_REFRESH_WORKERS = 3
 MAX_AUTOMATION_WORKERS = 3
+MAX_USER_DETAILS_FETCH_THREADS = 8
 
 # Create directories on import so nothing needs to worry about them not existing
 for _d in [DATA_DIR, CACHE_DIR, USERS_DIR, SCANS_DIR, DIFFS_DIR, IMAGE_CACHE_DIR]:

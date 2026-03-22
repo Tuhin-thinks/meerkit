@@ -44,6 +44,10 @@ const followingError = ref<string | null>(null);
 const followingLoaded = ref(false);
 const showOnlyNotFollowingBack = ref(false);
 const followingTotals = ref({ followersTotal: 0, followingTotal: 0 });
+type SortMetric = "follower_count" | "following_count";
+type SortOrder = "asc" | "desc";
+const sortMetric = ref<SortMetric>("follower_count");
+const sortOrder = ref<SortOrder>("desc");
 
 // ── Never-unfollow list ────────────────────────────────────────────────
 
@@ -77,13 +81,38 @@ let pollTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const filteredFollowingList = computed(() => {
     const q = followingSearch.value.trim().toLowerCase();
-    return followingList.value.filter(
+    const filtered = followingList.value.filter(
         (u) =>
             (!showOnlyNotFollowingBack.value || !u.follows_you) &&
             (!q ||
-            u.username.toLowerCase().includes(q) ||
-            u.full_name.toLowerCase().includes(q)),
+                u.username.toLowerCase().includes(q) ||
+                u.full_name.toLowerCase().includes(q)),
     );
+
+    const metric = sortMetric.value;
+    const multiplier = sortOrder.value === "asc" ? 1 : -1;
+
+    return [...filtered].sort((a, b) => {
+        const aMetric = a[metric];
+        const bMetric = b[metric];
+        const aVal = typeof aMetric === "number" ? aMetric : null;
+        const bVal = typeof bMetric === "number" ? bMetric : null;
+
+        if (aVal === null && bVal === null) {
+            return a.username.localeCompare(b.username);
+        }
+        if (aVal === null) {
+            return 1;
+        }
+        if (bVal === null) {
+            return -1;
+        }
+
+        if (aVal === bVal) {
+            return a.username.localeCompare(b.username);
+        }
+        return (aVal - bVal) * multiplier;
+    });
 });
 
 const notFollowingBackCount = computed(
@@ -412,7 +441,7 @@ const protectedPlaceholder = [
             </div>
         </header>
 
-        <div class="grid xl:grid-cols-[1.1fr,0.9fr] gap-6">
+        <div class="grid xl:grid-cols-[1.25fr,0.75fr] gap-6">
             <!-- Left: Inputs -->
             <section class="space-y-6">
                 <!-- Unfollow Candidates -->
@@ -513,12 +542,30 @@ const protectedPlaceholder = [
                             v-if="followingLoaded && followingList.length"
                         >
                             <!-- Search -->
-                            <input
-                                v-model="followingSearch"
-                                type="text"
-                                class="input-dark"
-                                placeholder="Search by username or name…"
-                            />
+                            <div class="grid gap-2 md:grid-cols-3">
+                                <input
+                                    v-model="followingSearch"
+                                    type="text"
+                                    class="input-dark md:col-span-2"
+                                    placeholder="Search by username or name…"
+                                />
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select
+                                        v-model="sortMetric"
+                                        class="input-dark-select text-xs"
+                                    >
+                                        <option value="follower_count">Sort: Their Followers</option>
+                                        <option value="following_count">Sort: Their Following</option>
+                                    </select>
+                                    <select
+                                        v-model="sortOrder"
+                                        class="input-dark-select text-xs"
+                                    >
+                                        <option value="desc">High → Low</option>
+                                        <option value="asc">Low → High</option>
+                                    </select>
+                                </div>
+                            </div>
 
                             <label
                                 class="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 gap-3"
@@ -565,7 +612,7 @@ const protectedPlaceholder = [
 
                             <!-- Scrollable user list -->
                             <div
-                                class="max-h-[380px] overflow-y-auto rounded-xl border border-white/10 divide-y divide-white/5"
+                                class="max-h-[560px] overflow-y-auto rounded-xl border border-white/10 divide-y divide-white/5"
                             >
                                 <label
                                     v-for="user in filteredFollowingList"

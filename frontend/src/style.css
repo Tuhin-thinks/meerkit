@@ -128,6 +128,29 @@ body::before {
   box-shadow: 0 0 0 3px rgba(34,211,238,0.16);
 }
 
+/* ── Select variant with styled native options ─────────────────────────── */
+.input-dark-select {
+  background: #1e2d4a;
+  border: 1px solid rgba(255,255,255,0.16);
+  color: #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.5rem;
+  font-size: 0.875rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  width: 100%;
+  appearance: auto;
+  cursor: pointer;
+}
+.input-dark-select:focus {
+  outline: none;
+  border-color: rgba(34,211,238,0.7);
+  box-shadow: 0 0 0 3px rgba(34,211,238,0.16);
+}
+.input-dark-select option {
+  background: #1e2d4a;
+  color: #e2e8f0;
+}
+
 /* ── Glassmorphism card ─────────────────────────────────────────────────── */
 .glass {
   background: rgba(22,33,58,0.72);
