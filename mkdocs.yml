@@ -54,6 +54,8 @@ markdown_extensions:
   - tables
   - toc:
       permalink: true
+  - pymdownx.arithmatex:
+      generic: true
   - pymdownx.emoji:
       emoji_index: !!python/name:material.extensions.emoji.twemoji
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
@@ -71,6 +73,10 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
 
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
 nav:
   - Home: index.md
   - Getting Started:
@@ -78,6 +84,8 @@ nav:
       - Architecture: architecture.md
   - Documentation:
       - Visual Tour: showcase.md
+      - Prediction Algorithm: prediction-algorithm.md
+      - Probability Model: probability-model.md
       - Backend API: backend.md
       - Frontend: frontend.md
       - Database: database.md

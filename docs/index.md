@@ -43,6 +43,8 @@ Open http://localhost:5173.
 
 - Setup: [Quick Start](setup.md)
 - Architecture: [Architecture](architecture.md)
+- Prediction flow: [Prediction Algorithm](prediction-algorithm.md)
+- Probability reasoning: [Probability Model](probability-model.md)
 - API internals: [Backend API](backend.md)
 - UI structure: [Frontend](frontend.md)
 - Data model: [Database](database.md)
