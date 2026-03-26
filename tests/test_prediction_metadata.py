@@ -124,7 +124,7 @@ def test_compute_followback_chances_uses_richer_metadata(monkeypatch):
     )
 
 
-def test_compute_followback_chances_caps_extreme_following_ratio(monkeypatch):
+def test_compute_followback_chances_rewards_high_following_ratio(monkeypatch):
     monkeypatch.setattr(
         account_handler.db_service,
         "get_target_profile",
@@ -164,9 +164,71 @@ def test_compute_followback_chances_caps_extreme_following_ratio(monkeypatch):
     )
 
     assert result["feature_breakdown"]["following_to_follower_ratio"] == 7.5
-    assert result["followback_probability"] <= 0.1
+    assert result["followback_probability"] >= 0.55
     assert any(
-        "Extreme following-to-follower ratio guardrail capped this prediction" in reason
+        "High following-to-follower ratio strongly increases follow-back likelihood"
+        in reason
+        for reason in result["reasons"]
+    )
+
+
+def test_compute_followback_chances_penalizes_follower_dominance_and_reports_alt_followback(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile",
+        lambda app_user_id, reference_profile_id, target_profile_id: {
+            "username": "main.account",
+            "is_private": False,
+            "is_verified": False,
+            "me_following_account": False,
+            "being_followed_by_account": False,
+            "follower_count": 5000,
+            "following_count": 120,
+        },
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_latest_scanned_profile_ids",
+        lambda app_user_id, reference_profile_id: set(),
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "get_target_profile_relationship_ids",
+        lambda app_user_id, reference_profile_id, target_profile_id, relationship_type: (
+            {"alt_user_1"} if relationship_type == "followers" else set()
+        ),
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_alt_account_links_for_primary_keys",
+        lambda app_user_id, reference_profile_id, primary_identity_keys: [
+            {
+                "primary_identity_key": "main.account",
+                "alt_identity_key": "alt_user_1",
+                "alt_normalized_username": "backup.main",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        account_handler.db_service,
+        "list_labeled_followback_predictions",
+        lambda app_user_id, reference_profile_id, limit=400: [],
+    )
+
+    result = account_handler.compute_followback_chances(
+        pk_id="target_low_ratio",
+        reference_profile_id="ig_123",
+        app_user_id="app_test_user",
+        metadata={"mutual_followers_count": 0, "media_count": 20},
+    )
+
+    assert result["followback_probability"] <= 0.2
+    assert result["alt_followback_assessment"]["is_alt_account_following_you"] is True
+    assert any(
+        "More followers than following critically lowers follow-back likelihood"
+        in reason
         for reason in result["reasons"]
     )
 

@@ -2152,3 +2152,362 @@ def get_safelist_identity_keys(
             (app_user_id, reference_profile_id, list_type),
         )
         return {row["identity_key"] for row in cursor.fetchall()}
+
+
+def upsert_alt_account_link(
+    *,
+    link_id: str,
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_raw_input: str,
+    primary_normalized_username: str | None,
+    primary_normalized_user_id: str | None,
+    primary_identity_key: str,
+    alt_raw_input: str,
+    alt_normalized_username: str | None,
+    alt_normalized_user_id: str | None,
+    alt_identity_key: str,
+) -> dict:
+    db = get_worker_db()
+    now = _now_iso()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO automation_alt_account_links (
+                link_id,
+                app_user_id,
+                reference_profile_id,
+                primary_raw_input,
+                primary_normalized_username,
+                primary_normalized_user_id,
+                primary_identity_key,
+                alt_raw_input,
+                alt_normalized_username,
+                alt_normalized_user_id,
+                alt_identity_key,
+                create_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (
+                app_user_id,
+                reference_profile_id,
+                primary_identity_key,
+                alt_identity_key
+            )
+            DO UPDATE SET
+                primary_raw_input = excluded.primary_raw_input,
+                primary_normalized_username = excluded.primary_normalized_username,
+                primary_normalized_user_id = excluded.primary_normalized_user_id,
+                alt_raw_input = excluded.alt_raw_input,
+                alt_normalized_username = excluded.alt_normalized_username,
+                alt_normalized_user_id = excluded.alt_normalized_user_id
+            """,
+            (
+                link_id,
+                app_user_id,
+                reference_profile_id,
+                primary_raw_input,
+                primary_normalized_username,
+                primary_normalized_user_id,
+                primary_identity_key,
+                alt_raw_input,
+                alt_normalized_username,
+                alt_normalized_user_id,
+                alt_identity_key,
+                now,
+            ),
+        )
+        conn.commit()
+        cursor.execute(
+            """
+            SELECT *
+            FROM automation_alt_account_links
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key = ?
+                AND alt_identity_key = ?
+            """,
+            (
+                app_user_id,
+                reference_profile_id,
+                primary_identity_key,
+                alt_identity_key,
+            ),
+        )
+        return dict(cursor.fetchone())
+
+
+def upsert_primary_account_registry_entry(
+    *,
+    primary_id: str,
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_raw_input: str,
+    primary_normalized_username: str | None,
+    primary_normalized_user_id: str | None,
+    primary_identity_key: str,
+    linkedin_accounts: list[str],
+) -> dict:
+    db = get_worker_db()
+    now = _now_iso()
+    linkedin_accounts_json = _json_dumps(linkedin_accounts) or "[]"
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO automation_primary_accounts (
+                primary_id,
+                app_user_id,
+                reference_profile_id,
+                primary_raw_input,
+                primary_normalized_username,
+                primary_normalized_user_id,
+                primary_identity_key,
+                linkedin_accounts_json,
+                create_date,
+                update_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (app_user_id, reference_profile_id, primary_identity_key)
+            DO UPDATE SET
+                primary_raw_input = excluded.primary_raw_input,
+                primary_normalized_username = excluded.primary_normalized_username,
+                primary_normalized_user_id = excluded.primary_normalized_user_id,
+                linkedin_accounts_json = excluded.linkedin_accounts_json,
+                update_date = excluded.update_date
+            """,
+            (
+                primary_id,
+                app_user_id,
+                reference_profile_id,
+                primary_raw_input,
+                primary_normalized_username,
+                primary_normalized_user_id,
+                primary_identity_key,
+                linkedin_accounts_json,
+                now,
+                now,
+            ),
+        )
+        conn.commit()
+        cursor.execute(
+            """
+            SELECT *
+            FROM automation_primary_accounts
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key = ?
+            """,
+            (app_user_id, reference_profile_id, primary_identity_key),
+        )
+        row = cursor.fetchone()
+        result = dict(row) if row else {}
+        if result:
+            parsed_linkedins = _json_loads(result.get("linkedin_accounts_json"))
+            result["linkedin_accounts"] = (
+                parsed_linkedins if isinstance(parsed_linkedins, list) else []
+            )
+        return result
+
+
+def get_primary_account_registry_entry(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str,
+) -> dict | None:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM automation_primary_accounts
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key = ?
+            """,
+            (app_user_id, reference_profile_id, primary_identity_key),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        result = dict(row)
+        parsed_linkedins = _json_loads(result.get("linkedin_accounts_json"))
+        result["linkedin_accounts"] = (
+            parsed_linkedins if isinstance(parsed_linkedins, list) else []
+        )
+        return result
+
+
+def list_primary_account_registry_entries(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str | None = None,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        if primary_identity_key:
+            cursor.execute(
+                """
+                SELECT *
+                FROM automation_primary_accounts
+                WHERE app_user_id = ?
+                    AND reference_profile_id = ?
+                    AND primary_identity_key = ?
+                ORDER BY create_date ASC
+                """,
+                (app_user_id, reference_profile_id, primary_identity_key),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT *
+                FROM automation_primary_accounts
+                WHERE app_user_id = ? AND reference_profile_id = ?
+                ORDER BY create_date ASC
+                """,
+                (app_user_id, reference_profile_id),
+            )
+        rows = [dict(row) for row in cursor.fetchall()]
+        for row in rows:
+            parsed_linkedins = _json_loads(row.get("linkedin_accounts_json"))
+            row["linkedin_accounts"] = (
+                parsed_linkedins if isinstance(parsed_linkedins, list) else []
+            )
+        return rows
+
+
+def list_alt_account_links(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str | None = None,
+) -> list[dict]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        if primary_identity_key:
+            cursor.execute(
+                """
+                SELECT *
+                FROM automation_alt_account_links
+                WHERE app_user_id = ?
+                    AND reference_profile_id = ?
+                    AND primary_identity_key = ?
+                ORDER BY create_date ASC
+                """,
+                (app_user_id, reference_profile_id, primary_identity_key),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT *
+                FROM automation_alt_account_links
+                WHERE app_user_id = ? AND reference_profile_id = ?
+                ORDER BY create_date ASC
+                """,
+                (app_user_id, reference_profile_id),
+            )
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def delete_alt_account_link(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str,
+    alt_identity_key: str,
+) -> bool:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            DELETE FROM automation_alt_account_links
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key = ?
+                AND alt_identity_key = ?
+            """,
+            (
+                app_user_id,
+                reference_profile_id,
+                primary_identity_key,
+                alt_identity_key,
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+
+def get_alt_identity_keys_for_primary(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str,
+) -> set[str]:
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT alt_identity_key
+            FROM automation_alt_account_links
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key = ?
+            """,
+            (app_user_id, reference_profile_id, primary_identity_key),
+        )
+        return {row["alt_identity_key"] for row in cursor.fetchall()}
+
+
+def get_alt_identity_keys_map_for_primary_keys(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_keys: set[str],
+) -> dict[str, set[str]]:
+    if not primary_identity_keys:
+        return {}
+    db = get_worker_db()
+    placeholders = ",".join("?" for _ in primary_identity_keys)
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT primary_identity_key, alt_identity_key
+            FROM automation_alt_account_links
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key IN ({placeholders})
+            """,
+            (app_user_id, reference_profile_id, *primary_identity_keys),
+        )
+        result: dict[str, set[str]] = {}
+        for row in cursor.fetchall():
+            primary_key = row["primary_identity_key"]
+            alt_key = row["alt_identity_key"]
+            result.setdefault(primary_key, set()).add(alt_key)
+        return result
+
+
+def list_alt_account_links_for_primary_keys(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_keys: set[str],
+) -> list[dict]:
+    if not primary_identity_keys:
+        return []
+    db = get_worker_db()
+    placeholders = ",".join("?" for _ in primary_identity_keys)
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM automation_alt_account_links
+            WHERE app_user_id = ?
+                AND reference_profile_id = ?
+                AND primary_identity_key IN ({placeholders})
+            ORDER BY create_date ASC
+            """,
+            (app_user_id, reference_profile_id, *primary_identity_keys),
+        )
+        return [dict(row) for row in cursor.fetchall()]

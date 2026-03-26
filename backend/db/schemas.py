@@ -292,6 +292,43 @@ CREATE TABLE IF NOT EXISTS automation_safelists (
     UNIQUE (app_user_id, reference_profile_id, list_type, identity_key)
 );"""
 
+AUTOMATION_ALT_ACCOUNT_LINKS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_alt_account_links (
+    link_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    primary_raw_input TEXT NOT NULL,
+    primary_normalized_username TEXT,
+    primary_normalized_user_id TEXT,
+    primary_identity_key TEXT NOT NULL,
+    alt_raw_input TEXT NOT NULL,
+    alt_normalized_username TEXT,
+    alt_normalized_user_id TEXT,
+    alt_identity_key TEXT NOT NULL,
+    create_date TEXT NOT NULL,
+    UNIQUE (
+        app_user_id,
+        reference_profile_id,
+        primary_identity_key,
+        alt_identity_key
+    )
+);"""
+
+AUTOMATION_PRIMARY_ACCOUNTS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS automation_primary_accounts (
+    primary_id TEXT PRIMARY KEY,
+    app_user_id TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
+    primary_raw_input TEXT NOT NULL,
+    primary_normalized_username TEXT,
+    primary_normalized_user_id TEXT,
+    primary_identity_key TEXT NOT NULL,
+    linkedin_accounts_json TEXT NOT NULL DEFAULT '[]',
+    create_date TEXT NOT NULL,
+    update_date TEXT NOT NULL,
+    UNIQUE (app_user_id, reference_profile_id, primary_identity_key)
+);"""
+
 AUTOMATION_ACTIONS_SCOPE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_automation_actions_scope
 ON automation_actions (app_user_id, reference_profile_id, status, create_date);
@@ -305,6 +342,25 @@ ON automation_action_items (action_id, status);
 AUTOMATION_SAFELISTS_SCOPE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_automation_safelists_scope
 ON automation_safelists (app_user_id, reference_profile_id, list_type);
+"""
+
+AUTOMATION_ALT_ACCOUNT_LINKS_SCOPE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_automation_alt_account_links_scope
+ON automation_alt_account_links (
+    app_user_id,
+    reference_profile_id,
+    primary_identity_key,
+    alt_identity_key
+);
+"""
+
+AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_automation_primary_accounts_scope
+ON automation_primary_accounts (
+    app_user_id,
+    reference_profile_id,
+    primary_identity_key
+);
 """
 
 
@@ -332,7 +388,11 @@ schema_collection = {
     "automation_actions": AUTOMATION_ACTIONS_SCHEMA,
     "automation_action_items": AUTOMATION_ACTION_ITEMS_SCHEMA,
     "automation_safelists": AUTOMATION_SAFELISTS_SCHEMA,
+    "automation_alt_account_links": AUTOMATION_ALT_ACCOUNT_LINKS_SCHEMA,
+    "automation_primary_accounts": AUTOMATION_PRIMARY_ACCOUNTS_SCHEMA,
     "idx_automation_actions_scope": AUTOMATION_ACTIONS_SCOPE_INDEX,
     "idx_automation_action_items_action": AUTOMATION_ACTION_ITEMS_ACTION_INDEX,
     "idx_automation_safelists_scope": AUTOMATION_SAFELISTS_SCOPE_INDEX,
+    "idx_automation_alt_account_links_scope": AUTOMATION_ALT_ACCOUNT_LINKS_SCOPE_INDEX,
+    "idx_automation_primary_accounts_scope": AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX,
 }

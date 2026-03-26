@@ -12,6 +12,9 @@ Endpoints:
   GET    /api/automation/safelists/<list_type>      — List safelist entries
   POST   /api/automation/safelists/<list_type>      — Add entries to safelist
   DELETE /api/automation/safelists/<list_type>/<key> — Remove one safelist entry
+    GET    /api/automation/alternative-account-links  — List alternative-account links
+    POST   /api/automation/alternative-account-links  — Add alternative-account links
+    DELETE /api/automation/alternative-account-links/<primary>/<alt> — Remove one alt link
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -28,11 +31,14 @@ from backend.routes import get_active_context
 from backend.services import automation_runner, db_service
 from backend.services.account_handler import _build_profile
 from backend.services.automation_service import (
+    add_alt_account_links,
     add_safelist_entries,
     confirm_action,
+    list_alt_links,
     list_safelist,
     prepare_batch_follow,
     prepare_batch_unfollow,
+    remove_alt_link,
     remove_safelist_entry,
 )
 from backend.services.instagram_gateway import instagram_gateway
@@ -468,6 +474,7 @@ def prepare_unfollow():
         result = prepare_batch_unfollow(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,
+            instagram_user=instagram_user,
             candidate_lines=candidate_lines,
             never_unfollow_lines=never_unfollow_lines,
             config=config,
@@ -650,3 +657,101 @@ def delete_from_safelist(list_type: str, identity_key: str):
         return jsonify({"error": "Entry not found"}), 404
 
     return jsonify({"removed": True, "identity_key": identity_key})
+
+
+# ── Alternative account links ────────────────────────────────────────────────
+
+
+@bp.get("/alternative-account-links")
+def get_alt_account_links():
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+    primary_identity_key = (
+        request.args.get("primary_identity_key") or ""
+    ).strip() or None
+
+    entries = list_alt_links(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+    )
+    return jsonify({"entries": entries, "total": len(entries)})
+
+
+@bp.post("/alternative-account-links")
+def add_alt_account_link_entries():
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+
+    payload = request.get_json(silent=True) or {}
+    primary_account = (payload.get("primary_account") or "").strip()
+    alternative_accounts = payload.get("alternative_accounts") or []
+    linkedin_accounts = payload.get("linkedin_accounts") or []
+    trigger_discovery = bool(payload.get("trigger_discovery", False))
+
+    if not primary_account:
+        return jsonify({"error": "primary_account is required"}), 400
+    if not isinstance(alternative_accounts, list):
+        return jsonify({"error": "alternative_accounts must be a list"}), 400
+    if not isinstance(linkedin_accounts, list):
+        return jsonify({"error": "linkedin_accounts must be a list"}), 400
+    if not alternative_accounts and not linkedin_accounts:
+        return jsonify(
+            {
+                "error": "Provide at least one alternative account or one LinkedIn account"
+            }
+        ), 400
+
+    try:
+        result = add_alt_account_links(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            primary_raw_input=primary_account,
+            alt_raw_lines=alternative_accounts,
+            linkedin_raw_lines=linkedin_accounts,
+            trigger_discovery=trigger_discovery,
+            instagram_user=instagram_user,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    return jsonify(result), 201
+
+
+@bp.delete(
+    "/alternative-account-links/<path:primary_identity_key>/<path:alt_identity_key>"
+)
+def delete_alt_account_link_entry(primary_identity_key: str, alt_identity_key: str):
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    reference_profile_id: str = instagram_user["instagram_user_id"]
+
+    removed = remove_alt_link(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+        alt_identity_key=alt_identity_key,
+    )
+    if not removed:
+        return jsonify({"error": "Entry not found"}), 404
+    return jsonify(
+        {
+            "removed": True,
+            "primary_identity_key": primary_identity_key,
+            "alt_identity_key": alt_identity_key,
+        }
+    )

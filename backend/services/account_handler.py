@@ -333,6 +333,7 @@ def _build_feature_breakdown(
     target_following: set[str],
     overlap_followers: int,
     overlap_following: int,
+    alt_followback_assessment: dict[str, object] | None = None,
 ) -> dict[str, object]:
     follower_count = (
         _as_int(target_profile.get("follower_count")) if target_profile else None
@@ -363,7 +364,7 @@ def _build_feature_breakdown(
     elif target_followers or target_following:
         graph_fetch_status = "partial"
 
-    return {
+    breakdown = {
         "audience_overlap_followers": overlap_followers,
         "audience_overlap_following": overlap_following,
         "audience_overlap_followers_ratio_reference": round(
@@ -406,6 +407,18 @@ def _build_feature_breakdown(
         "graph_fetch_status": graph_fetch_status,
         **metadata_features,
     }
+    if alt_followback_assessment:
+        matched_alt_keys = alt_followback_assessment.get("matched_alt_identity_keys")
+        if not isinstance(matched_alt_keys, list):
+            matched_alt_keys = []
+        breakdown["has_alt_account_followback"] = bool(
+            alt_followback_assessment.get("is_alt_account_following_you")
+        )
+        breakdown["alt_account_followback_count"] = len(matched_alt_keys)
+    else:
+        breakdown["has_alt_account_followback"] = False
+        breakdown["alt_account_followback_count"] = 0
+    return breakdown
 
 
 def _historical_cohort_keys(feature_breakdown: dict[str, object]) -> tuple[str, ...]:
@@ -506,6 +519,7 @@ class FollowbackComputationContext:
     target_following: set[str]
     overlap_followers: int
     overlap_following: int
+    alt_followback_assessment: dict[str, object]
     feature_breakdown: dict[str, object]
 
 
@@ -515,6 +529,72 @@ class FollowbackMathResult:
     confidence: float
     reasons: list[str]
     historical_reference: dict[str, float | int]
+
+
+def _assess_alt_account_followback(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    target_profile: dict | None,
+    target_followers: set[str],
+) -> dict[str, object]:
+    primary_identity_keys: set[str] = {target_profile_id}
+    username = _as_str((target_profile or {}).get("username"))
+    if username:
+        primary_identity_keys.add(username)
+
+    link_rows = db_service.list_alt_account_links_for_primary_keys(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_keys=primary_identity_keys,
+    )
+    if not link_rows:
+        return {
+            "is_alt_account_following_you": False,
+            "matched_alt_identity_keys": [],
+            "matched_alt_usernames": [],
+            "linked_alt_count": 0,
+        }
+
+    cached_target_followers = (
+        target_followers
+        or db_service.get_target_profile_relationship_ids(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+            relationship_type="followers",
+        )
+    )
+
+    matched_alt_identity_keys: list[str] = []
+    matched_alt_usernames: list[str] = []
+    for link in link_rows:
+        alt_identity_key = link.get("alt_identity_key")
+        if not isinstance(alt_identity_key, str):
+            continue
+        if alt_identity_key not in cached_target_followers:
+            continue
+        matched_alt_identity_keys.append(alt_identity_key)
+        alt_username = link.get("alt_normalized_username") or alt_identity_key
+        if isinstance(alt_username, str):
+            matched_alt_usernames.append(alt_username)
+
+    matched_alt_identity_keys = sorted(set(matched_alt_identity_keys))
+    matched_alt_usernames = sorted(set(matched_alt_usernames))
+    linked_alt_count = len(
+        {
+            row.get("alt_identity_key")
+            for row in link_rows
+            if isinstance(row.get("alt_identity_key"), str)
+        }
+    )
+    return {
+        "is_alt_account_following_you": bool(matched_alt_identity_keys),
+        "matched_alt_identity_keys": matched_alt_identity_keys,
+        "matched_alt_usernames": matched_alt_usernames,
+        "linked_alt_count": linked_alt_count,
+    }
 
 
 def _load_followback_computation_context(
@@ -545,6 +625,13 @@ def _load_followback_computation_context(
     metadata_features = _metadata_feature_subset(metadata)
     overlap_followers = len(target_followers & latest_follower_ids)
     overlap_following = len(target_following & latest_follower_ids)
+    alt_followback_assessment = _assess_alt_account_followback(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=pk_id,
+        target_profile=target_profile,
+        target_followers=target_followers,
+    )
     feature_breakdown = _build_feature_breakdown(
         target_profile=target_profile,
         metadata_features=metadata_features,
@@ -553,6 +640,7 @@ def _load_followback_computation_context(
         target_following=target_following,
         overlap_followers=overlap_followers,
         overlap_following=overlap_following,
+        alt_followback_assessment=alt_followback_assessment,
     )
 
     return FollowbackComputationContext(
@@ -567,6 +655,7 @@ def _load_followback_computation_context(
         target_following=target_following,
         overlap_followers=overlap_followers,
         overlap_following=overlap_following,
+        alt_followback_assessment=alt_followback_assessment,
         feature_breakdown=feature_breakdown,
     )
 
@@ -577,7 +666,6 @@ def _calculate_followback_math(
     score = _logit(0.28)
     confidence = 0.24
     reasons: list[str] = []
-    ratio_probability_cap: float | None = None
 
     target_profile = context.target_profile
     if target_profile:
@@ -614,8 +702,8 @@ def _calculate_followback_math(
             and isinstance(follower_count, int)
             and follower_count > 0
         ):
-            # Continuous tanh adjustment: ratio near or above 1.0 is the strongest positive signal
-            r = min(_safe_ratio(following_count, follower_count), 3.0)
+            # Higher following-to-follower ratio generally indicates reciprocal behavior.
+            r = min(_safe_ratio(following_count, follower_count), 6.0)
             ratio_adj = 0.21 * math.tanh(2.5 * (r - 0.35))
             score += ratio_adj
             if ratio_adj >= 0.10:
@@ -628,16 +716,34 @@ def _calculate_followback_math(
                 )
 
             raw_ratio = _safe_ratio(following_count, follower_count)
-            if raw_ratio >= 3.0 and not target_profile.get("being_followed_by_account"):
-                # Guardrail: extreme following/follower ratios should be treated as a
-                # strong negative for follow-back intent.
-                extreme_ratio_penalty = min(2.4, 1.15 + (raw_ratio - 3.0) * 0.7)
-                score -= extreme_ratio_penalty
+            if raw_ratio > 1.0:
+                ratio_surplus = raw_ratio - 1.0
+                high_ratio_bonus = min(
+                    0.92, 0.18 * (math.exp(1.2 * ratio_surplus) - 1.0)
+                )
+                score += high_ratio_bonus
+                if high_ratio_bonus >= 0.22:
+                    reasons.append(
+                        "High following-to-follower ratio strongly increases follow-back likelihood"
+                    )
+            elif raw_ratio < 1.0:
+                follower_dominance = (1.0 / max(raw_ratio, 0.01)) - 1.0
+                dominant_penalty = min(
+                    2.8,
+                    0.22 * (math.exp(1.35 * follower_dominance) - 1.0),
+                )
+                score -= dominant_penalty
                 confidence += 0.05
                 reasons.append(
-                    "Extremely high following-to-follower ratio strongly lowers follow-back likelihood"
+                    "More followers than following critically lowers follow-back likelihood"
                 )
-                ratio_probability_cap = 0.1 if raw_ratio >= 5.0 else 0.18
+
+    if context.alt_followback_assessment.get("is_alt_account_following_you"):
+        score += 0.26
+        confidence += 0.04
+        reasons.append(
+            "A linked alternative account already follows the active account"
+        )
 
     mutual_followers_count = _as_int(
         context.metadata_features.get("mutual_followers_count")
@@ -721,11 +827,6 @@ def _calculate_followback_math(
         probability * (1 - history_weight)
         + float(historical_reference["calibrated_probability"]) * history_weight
     )
-    if ratio_probability_cap is not None:
-        probability = min(probability, ratio_probability_cap)
-        reasons.append(
-            "Extreme following-to-follower ratio guardrail capped this prediction"
-        )
     if history_weight > 0:
         reasons.append(
             "Historical confirmed outcomes were used to calibrate this score"
@@ -798,6 +899,7 @@ def compute_followback_chances(
         "overlap_available": overlap_available,
         "ambiguous_probability": ambiguous_probability,
         "can_fetch_overlap": can_fetch_overlap,
+        "alt_followback_assessment": context.alt_followback_assessment,
         "feature_breakdown": context.feature_breakdown,
         "reasons": math_result.reasons,
     }

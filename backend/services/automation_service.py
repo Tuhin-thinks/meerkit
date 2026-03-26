@@ -5,10 +5,11 @@ Handles candidate normalization, safelist management, batch follow/unfollow
 prepare flows, and per-item execution delegates (called by the worker).
 """
 
+import random as _random
 import re as _re
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from uuid import uuid4
 
 import insta_interface as ii
@@ -17,7 +18,6 @@ from backend.services import db_service
 from backend.services.account_handler import (
     _build_profile,
     _extract_username_from_target_input,
-    _normalize_prediction_target_input,
 )
 from backend.services.instagram_gateway import instagram_gateway
 
@@ -30,8 +30,6 @@ _THREAD_LOCAL = threading.local()
 _INTER_ACTION_DELAY_SECONDS = 3.0
 # Extra jitter ceiling on top of the base delay (seconds).
 _INTER_ACTION_JITTER_SECONDS = 4.0
-
-import random as _random
 
 
 def _now_iso() -> str:
@@ -194,6 +192,281 @@ def list_safelist(
     )
 
 
+def _resolve_identity_to_user_id(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    instagram_user: dict,
+    normalized_username: str | None,
+) -> str | None:
+    if not normalized_username:
+        return None
+    profile = _get_cached_profile(instagram_user)
+    return instagram_gateway.resolve_target_user_pk_for_automation(
+        app_user_id=app_user_id,
+        instagram_user_id=reference_profile_id,
+        profile=profile,
+        username=normalized_username,
+        caller_service="automation_service",
+        caller_method="_resolve_identity_to_user_id",
+    )
+
+
+def _parse_unique_linkedin_accounts(raw_lines: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for raw in raw_lines:
+        candidate = str(raw).strip()
+        if not candidate:
+            continue
+        dedup_key = candidate.lower()
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+        result.append(candidate)
+    return result
+
+
+def _run_discovery_for_identity_keys(
+    *,
+    app_user_id: str,
+    instagram_user: dict,
+    identity_keys: list[str],
+) -> dict:
+    from backend.services import account_handler
+
+    queued_prediction_ids: list[str] = []
+    queued_task_ids: list[str] = []
+    skipped_identity_keys: list[str] = []
+
+    for identity_key in identity_keys:
+        try:
+            payload = account_handler.request_followback_prediction(
+                app_user_id=app_user_id,
+                instagram_user=instagram_user,
+                user_id=identity_key if _USER_ID_RE.fullmatch(identity_key) else None,
+                username=None if _USER_ID_RE.fullmatch(identity_key) else identity_key,
+                refresh=True,
+                force_background=True,
+            )
+            prediction = payload.get("prediction") or {}
+            task = payload.get("task") or {}
+            prediction_id = prediction.get("prediction_id")
+            task_id = task.get("task_id")
+            if isinstance(prediction_id, str):
+                queued_prediction_ids.append(prediction_id)
+            if isinstance(task_id, str):
+                queued_task_ids.append(task_id)
+        except Exception:
+            skipped_identity_keys.append(identity_key)
+
+    return {
+        "queued_prediction_ids": queued_prediction_ids,
+        "queued_task_ids": queued_task_ids,
+        "queued_count": len(queued_prediction_ids),
+        "skipped_discovery_identity_keys": skipped_identity_keys,
+    }
+
+
+def add_alt_account_links(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_raw_input: str,
+    alt_raw_lines: list[str],
+    linkedin_raw_lines: list[str] | None = None,
+    trigger_discovery: bool = False,
+    instagram_user: dict | None = None,
+) -> dict:
+    primary_username, primary_user_id, primary_identity_key = normalize_input_entry(
+        primary_raw_input
+    )
+    if not primary_identity_key:
+        raise ValueError("primary_account is invalid")
+
+    if instagram_user and primary_username and not primary_user_id:
+        resolved_primary = _resolve_identity_to_user_id(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            instagram_user=instagram_user,
+            normalized_username=primary_username,
+        )
+        if resolved_primary:
+            primary_user_id = resolved_primary
+            primary_identity_key = resolved_primary
+
+    normalized_alt_entries = bulk_normalize_entries(alt_raw_lines)
+    linkedin_accounts = _parse_unique_linkedin_accounts(linkedin_raw_lines or [])
+
+    db_service.upsert_primary_account_registry_entry(
+        primary_id=str(uuid4()),
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_raw_input=primary_raw_input.strip(),
+        primary_normalized_username=primary_username,
+        primary_normalized_user_id=primary_user_id,
+        primary_identity_key=primary_identity_key,
+        linkedin_accounts=linkedin_accounts,
+    )
+
+    added = 0
+    skipped_invalid = 0
+    discovery_identity_keys: list[str] = [primary_identity_key]
+
+    for alt_entry in normalized_alt_entries:
+        if not alt_entry["is_valid"]:
+            skipped_invalid += 1
+            continue
+
+        alt_username = alt_entry.get("normalized_username")
+        alt_user_id = alt_entry.get("normalized_user_id")
+        alt_identity_key = alt_entry.get("identity_key")
+
+        if instagram_user and alt_username and not alt_user_id:
+            resolved_alt = _resolve_identity_to_user_id(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                instagram_user=instagram_user,
+                normalized_username=alt_username,
+            )
+            if resolved_alt:
+                alt_user_id = resolved_alt
+                alt_identity_key = resolved_alt
+
+        if not alt_identity_key:
+            skipped_invalid += 1
+            continue
+        if alt_identity_key == primary_identity_key:
+            skipped_invalid += 1
+            continue
+
+        db_service.upsert_alt_account_link(
+            link_id=str(uuid4()),
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            primary_raw_input=primary_raw_input.strip(),
+            primary_normalized_username=primary_username,
+            primary_normalized_user_id=primary_user_id,
+            primary_identity_key=primary_identity_key,
+            alt_raw_input=alt_entry["raw_input"],
+            alt_normalized_username=alt_username,
+            alt_normalized_user_id=alt_user_id,
+            alt_identity_key=alt_identity_key,
+        )
+        added += 1
+        if alt_identity_key not in discovery_identity_keys:
+            discovery_identity_keys.append(alt_identity_key)
+
+    entries = db_service.list_alt_account_links(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+    )
+    primary_entry = db_service.get_primary_account_registry_entry(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+    )
+
+    discovery_result = {
+        "queued_prediction_ids": [],
+        "queued_task_ids": [],
+        "queued_count": 0,
+        "skipped_discovery_identity_keys": [],
+    }
+    if trigger_discovery and instagram_user:
+        discovery_result = _run_discovery_for_identity_keys(
+            app_user_id=app_user_id,
+            instagram_user=instagram_user,
+            identity_keys=discovery_identity_keys,
+        )
+
+    return {
+        "primary_identity_key": primary_identity_key,
+        "added": added,
+        "skipped_invalid": skipped_invalid,
+        "linkedin_accounts": primary_entry.get("linkedin_accounts", [])
+        if primary_entry
+        else linkedin_accounts,
+        "entries": entries,
+        "total": len(entries),
+        "discovery": discovery_result,
+    }
+
+
+def list_alt_links(
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str | None = None,
+) -> list[dict]:
+    entries = db_service.list_alt_account_links(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+    )
+    primary_entries = db_service.list_primary_account_registry_entries(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+    )
+    linkedin_by_primary = {
+        entry.get("primary_identity_key"): entry.get("linkedin_accounts", [])
+        for entry in primary_entries
+        if isinstance(entry.get("primary_identity_key"), str)
+    }
+    for entry in entries:
+        primary_key = entry.get("primary_identity_key")
+        if isinstance(primary_key, str):
+            entry["linkedin_accounts"] = linkedin_by_primary.get(primary_key, [])
+    existing_primary_keys = {
+        entry.get("primary_identity_key")
+        for entry in entries
+        if isinstance(entry.get("primary_identity_key"), str)
+    }
+    for primary_entry in primary_entries:
+        primary_key = primary_entry.get("primary_identity_key")
+        if not isinstance(primary_key, str) or primary_key in existing_primary_keys:
+            continue
+        entries.append(
+            {
+                "link_id": f"primary::{primary_key}",
+                "app_user_id": app_user_id,
+                "reference_profile_id": reference_profile_id,
+                "primary_raw_input": primary_entry.get("primary_raw_input")
+                or primary_key,
+                "primary_normalized_username": primary_entry.get(
+                    "primary_normalized_username"
+                ),
+                "primary_normalized_user_id": primary_entry.get(
+                    "primary_normalized_user_id"
+                ),
+                "primary_identity_key": primary_key,
+                "alt_raw_input": None,
+                "alt_normalized_username": None,
+                "alt_normalized_user_id": None,
+                "alt_identity_key": None,
+                "create_date": primary_entry.get("create_date") or _now_iso(),
+                "linkedin_accounts": primary_entry.get("linkedin_accounts", []),
+            }
+        )
+    return entries
+
+
+def remove_alt_link(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    primary_identity_key: str,
+    alt_identity_key: str,
+) -> bool:
+    return db_service.delete_alt_account_link(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        primary_identity_key=primary_identity_key,
+        alt_identity_key=alt_identity_key,
+    )
+
+
 # ── Prepare: batch follow ──────────────────────────────────────────────────────
 
 
@@ -253,7 +526,6 @@ def prepare_batch_follow(
         config={**config, "max_follow_count": max_follow_count},
     )
 
-    now = _now_iso()
     item_rows = [
         {
             "item_id": str(uuid4()),
@@ -324,6 +596,7 @@ def prepare_batch_unfollow(
     *,
     app_user_id: str,
     reference_profile_id: str,
+    instagram_user: dict | None,
     candidate_lines: list[str],
     never_unfollow_lines: list[str],
     config: dict,
@@ -337,8 +610,6 @@ def prepare_batch_unfollow(
     use_auto_discovery: derive candidates from cached following-minus-followers if True
     """
     max_unfollow_count: int = int(config.get("max_unfollow_count") or 50)
-    skip_mutual: bool = bool(config.get("skip_mutual", True))
-
     # Merge DB safelist with in-request list
     db_nu_keys = db_service.get_safelist_identity_keys(
         app_user_id, reference_profile_id, "never_unfollow"
@@ -361,17 +632,67 @@ def prepare_batch_unfollow(
         candidate_lines = list(non_followers)
 
     candidates = bulk_normalize_entries(candidate_lines)
+    candidate_identity_aliases: list[set[str]] = []
+    all_candidate_identity_keys: set[str] = set()
+    for entry in candidates:
+        identity_keys = {entry["identity_key"]} if entry.get("identity_key") else set()
+        if (
+            instagram_user
+            and entry.get("is_valid")
+            and not entry.get("normalized_user_id")
+            and entry.get("normalized_username")
+        ):
+            resolved_user_id = _resolve_identity_to_user_id(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                instagram_user=instagram_user,
+                normalized_username=entry["normalized_username"],
+            )
+            if resolved_user_id:
+                entry["normalized_user_id"] = resolved_user_id
+                identity_keys.add(resolved_user_id)
+        candidate_identity_aliases.append(identity_keys)
+        all_candidate_identity_keys.update(identity_keys)
+
+    linked_alt_identity_keys_by_primary = (
+        db_service.get_alt_identity_keys_map_for_primary_keys(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            primary_identity_keys=all_candidate_identity_keys,
+        )
+    )
+    active_follower_ids = db_service.get_target_profile_relationship_ids(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=reference_profile_id,
+        relationship_type="followers",
+    )
 
     selected: list[dict] = []
     excluded: list[dict] = []
 
-    for entry in candidates:
+    for index, entry in enumerate(candidates):
         if not entry["is_valid"]:
             excluded.append({**entry, "exclusion_reason": "invalid_input"})
             continue
         if entry["identity_key"] in combined_exclusion_keys:
             excluded.append({**entry, "exclusion_reason": "safelist"})
             continue
+
+        candidate_alt_keys: set[str] = set()
+        for key in candidate_identity_aliases[index]:
+            candidate_alt_keys.update(
+                linked_alt_identity_keys_by_primary.get(key, set())
+            )
+        if candidate_alt_keys and (candidate_alt_keys & active_follower_ids):
+            excluded.append(
+                {
+                    **entry,
+                    "exclusion_reason": "alternative_account_follows_you",
+                }
+            )
+            continue
+
         if len(selected) >= max_unfollow_count:
             excluded.append({**entry, "exclusion_reason": "cap_reached"})
             continue
