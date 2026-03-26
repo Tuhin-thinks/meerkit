@@ -37,6 +37,11 @@ const input = ref("");
 const isRunning = ref(false);
 const rows = ref<BatchRow[]>([]);
 const exportMessage = ref("");
+const filterMeFollowing = ref(false);
+const filterMyFollower = ref(false);
+const minFollowBackProbability = ref(0);
+const minConfidence = ref(0);
+const orderBy = ref<"follow_back" | "confidence">("follow_back");
 const batchPlaceholder = [
     "example_user",
     "https://www.instagram.com/second.user/",
@@ -79,13 +84,76 @@ const erroredCount = computed(
         ).length,
 );
 
-const completedPredictionRows = computed(() =>
-    rows.value.filter(
+const filteredCompletedPredictionRows = computed(() =>
+    filteredRows.value.filter(
         (row) => row.status === "completed" && row.prediction !== null,
     ),
 );
 
-const canExportCompleted = computed(() => completedPredictionRows.value.length > 0);
+const canExportCompleted = computed(
+    () => filteredCompletedPredictionRows.value.length > 0,
+);
+
+const filteredRows = computed(() => {
+    const filtered = rows.value.filter((row) => {
+        const featureBreakdown = getPredictionFeatureBreakdown(row);
+
+        if (
+            filterMeFollowing.value &&
+            !coerceBoolean(featureBreakdown?.me_following_account)
+        ) {
+            return false;
+        }
+
+        if (
+            filterMyFollower.value &&
+            !coerceBoolean(featureBreakdown?.being_followed_by_account)
+        ) {
+            return false;
+        }
+
+        const probabilityPercent = toPercent(row.prediction?.probability ?? null);
+        if (
+            minFollowBackProbability.value > 0 &&
+            (probabilityPercent === null ||
+                probabilityPercent < minFollowBackProbability.value)
+        ) {
+            return false;
+        }
+
+        const confidencePercent = toPercent(row.prediction?.confidence ?? null);
+        if (
+            minConfidence.value > 0 &&
+            (confidencePercent === null || confidencePercent < minConfidence.value)
+        ) {
+            return false;
+        }
+
+        return true;
+    });
+
+    return filtered.slice().sort((a, b) => {
+        const firstValue =
+            orderBy.value === "follow_back"
+                ? a.prediction?.probability ?? null
+                : a.prediction?.confidence ?? null;
+        const secondValue =
+            orderBy.value === "follow_back"
+                ? b.prediction?.probability ?? null
+                : b.prediction?.confidence ?? null;
+
+        if (firstValue === null && secondValue === null) {
+            return 0;
+        }
+        if (firstValue === null) {
+            return 1;
+        }
+        if (secondValue === null) {
+            return -1;
+        }
+        return secondValue - firstValue;
+    });
+});
 
 function extractInstagramUsername(token: string): string | null {
     if (!token.toLowerCase().includes("instagram.com")) {
@@ -292,6 +360,46 @@ function formatProbability(value: number | null) {
     return `${Math.round(value * 100)}%`;
 }
 
+function toPercent(value: number | null): number | null {
+    if (value === null || Number.isNaN(value)) {
+        return null;
+    }
+    return Math.round(value * 100);
+}
+
+function coerceBoolean(value: unknown): boolean {
+    return value === true;
+}
+
+function getPredictionFeatureBreakdown(row: BatchRow):
+    | {
+          me_following_account?: unknown;
+          being_followed_by_account?: unknown;
+      }
+    | null {
+    if (!row.prediction) {
+        return null;
+    }
+
+    const directBreakdown = row.prediction.feature_breakdown as {
+        me_following_account?: unknown;
+        being_followed_by_account?: unknown;
+    } | null;
+
+    if (directBreakdown) {
+        return directBreakdown;
+    }
+
+    const payload = row.prediction.result_payload as {
+        feature_breakdown?: {
+            me_following_account?: unknown;
+            being_followed_by_account?: unknown;
+        };
+    } | null;
+
+    return payload?.feature_breakdown ?? null;
+}
+
 function hasAltFollowback(row: BatchRow) {
     const payload = row.prediction?.result_payload as {
         alt_followback_assessment?: {
@@ -308,9 +416,23 @@ function clearResults() {
     exportMessage.value = "";
 }
 
-function getCompletedUsernames(): string[] {
+function resetFilters() {
+    filterMeFollowing.value = false;
+    filterMyFollower.value = false;
+    minFollowBackProbability.value = 0;
+    minConfidence.value = 0;
+    orderBy.value = "follow_back";
+}
+
+function getVisibleCompletedRows(): BatchRow[] {
+    return filteredRows.value.filter(
+        (row) => row.status === "completed" && row.prediction !== null,
+    );
+}
+
+function getCompletedUsernames(completedRows: BatchRow[]): string[] {
     const usernames = new Set<string>();
-    for (const row of completedPredictionRows.value) {
+    for (const row of completedRows) {
         const username = row.prediction?.target_username?.trim();
         if (username) {
             usernames.add(username);
@@ -319,8 +441,10 @@ function getCompletedUsernames(): string[] {
     return Array.from(usernames);
 }
 
-function getCompletedJsonPayload(): Array<Record<string, unknown>> {
-    return completedPredictionRows.value.map((row) => ({
+function getCompletedJsonPayload(
+    completedRows: BatchRow[],
+): Array<Record<string, unknown>> {
+    return completedRows.map((row) => ({
         username: row.prediction!.target_username,
         target_profile_id: row.prediction!.target_profile_id,
         probability: row.prediction!.probability,
@@ -356,40 +480,51 @@ function downloadTextFile(filename: string, content: string, mimeType: string) {
 }
 
 async function copyCompletedAsTxt() {
-    const usernames = getCompletedUsernames();
+    const completedRows = getVisibleCompletedRows();
+    const usernames = getCompletedUsernames(completedRows);
     if (!usernames.length) {
-        exportMessage.value = "No completed usernames available.";
+        exportMessage.value =
+            "No completed usernames in the filtered results.";
         return;
     }
-    await copyTextToClipboard(usernames.join("\n"), "Copied usernames as TXT.");
+    await copyTextToClipboard(
+        usernames.join("\n"),
+        `Copied ${usernames.length} username(s) as TXT.`,
+    );
 }
 
 async function copyCompletedAsJson() {
-    const payload = getCompletedJsonPayload();
+    const completedRows = getVisibleCompletedRows();
+    const payload = getCompletedJsonPayload(completedRows);
     if (!payload.length) {
-        exportMessage.value = "No completed predictions available.";
+        exportMessage.value =
+            "No completed predictions in the filtered results.";
         return;
     }
     await copyTextToClipboard(
         JSON.stringify(payload, null, 2),
-        "Copied completed predictions as JSON.",
+        `Copied ${payload.length} filtered prediction record(s) as JSON.`,
     );
 }
 
 function downloadCompletedAsTxt() {
-    const usernames = getCompletedUsernames();
+    const completedRows = getVisibleCompletedRows();
+    const usernames = getCompletedUsernames(completedRows);
     if (!usernames.length) {
-        exportMessage.value = "No completed usernames available.";
+        exportMessage.value =
+            "No completed usernames in the filtered results.";
         return;
     }
     downloadTextFile("prediction_usernames.txt", usernames.join("\n"), "text/plain;charset=utf-8");
-    exportMessage.value = "Downloaded usernames TXT file.";
+    exportMessage.value = `Downloaded ${usernames.length} username(s) TXT file.`;
 }
 
 function downloadCompletedAsJson() {
-    const payload = getCompletedJsonPayload();
+    const completedRows = getVisibleCompletedRows();
+    const payload = getCompletedJsonPayload(completedRows);
     if (!payload.length) {
-        exportMessage.value = "No completed predictions available.";
+        exportMessage.value =
+            "No completed predictions in the filtered results.";
         return;
     }
     downloadTextFile(
@@ -397,7 +532,8 @@ function downloadCompletedAsJson() {
         JSON.stringify(payload, null, 2),
         "application/json;charset=utf-8",
     );
-    exportMessage.value = "Downloaded detailed JSON file.";
+    exportMessage.value =
+        `Downloaded ${payload.length} filtered prediction record(s) as JSON.`;
 }
 
 function openPredictionHistory() {
@@ -457,7 +593,7 @@ function openPredictionHistory() {
                 class="mt-4 border border-white/10 rounded-xl bg-white/[0.03] p-3"
             >
                 <p class="text-xs text-slate-300 font-semibold mb-2">
-                    Completed export options
+                    Completed export options (filtered view)
                 </p>
                 <div class="flex flex-wrap items-center gap-2">
                     <button
@@ -503,16 +639,81 @@ function openPredictionHistory() {
             v-if="rows.length"
             class="bg-[#16213a] border border-white/[0.07] rounded-2xl shadow-2xl shadow-black/30 overflow-hidden"
         >
+            <div class="px-4 py-3 border-b border-white/[0.07] bg-white/[0.01]">
+                <div class="flex flex-wrap items-center gap-4 text-xs text-slate-300">
+                    <label class="inline-flex items-center gap-2">
+                        <input
+                            v-model="filterMeFollowing"
+                            type="checkbox"
+                            class="accent-cyan-500"
+                        />
+                        Me following
+                    </label>
+
+                    <label class="inline-flex items-center gap-2">
+                        <input
+                            v-model="filterMyFollower"
+                            type="checkbox"
+                            class="accent-cyan-500"
+                        />
+                        My follower
+                    </label>
+
+                    <label class="inline-flex items-center gap-2">
+                        <span>Follow back ≥ {{ minFollowBackProbability }}%</span>
+                        <input
+                            v-model.number="minFollowBackProbability"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            class="w-32"
+                        />
+                    </label>
+
+                    <label class="inline-flex items-center gap-2">
+                        <span>Confidence ≥ {{ minConfidence }}%</span>
+                        <input
+                            v-model.number="minConfidence"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            class="w-32"
+                        />
+                    </label>
+
+                    <label class="inline-flex items-center gap-2">
+                        <span>Order by</span>
+                        <select
+                            v-model="orderBy"
+                            class="bg-[#0f1a30] border border-white/10 rounded-md px-2 py-1 text-xs"
+                        >
+                            <option value="follow_back">Follow back</option>
+                            <option value="confidence">Confidence</option>
+                        </select>
+                    </label>
+
+                    <button
+                        class="btn-ghost px-2 py-1 rounded-md text-xs font-semibold"
+                        @click="resetFilters"
+                    >
+                        Reset filters
+                    </button>
+                </div>
+            </div>
+
             <div
                 class="px-4 py-3 border-b border-white/[0.07] bg-white/[0.02] text-sm text-slate-400 flex gap-4"
             >
                 <span>Completed: {{ completedCount }}</span>
                 <span>Issues: {{ erroredCount }}</span>
                 <span>Total: {{ rows.length }}</span>
+                <span>Shown: {{ filteredRows.length }}</span>
             </div>
             <div class="divide-y divide-white/[0.07]">
                 <div
-                    v-for="row in rows"
+                    v-for="row in filteredRows"
                     :key="row.userId || row.username || row.rawInput"
                     class="px-4 py-3 grid lg:grid-cols-[1.3fr,0.9fr,2fr,1fr] gap-3 items-start"
                 >
