@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import ProfilePicture from "./ProfilePicture.vue";
 import { addAlternativeAccountLinks } from "../services/api";
@@ -29,6 +29,17 @@ const linkedAccountsInput = ref("");
 const linkedAccountsError = ref("");
 const linkedAccountsSuccess = ref("");
 const isSavingLinkedAccounts = ref(false);
+
+const altFollowbackAssessment = computed(
+    () => props.follower.alt_followback_assessment ?? null,
+);
+const matchedAltUsernamesLabel = computed(() => {
+    const usernames = altFollowbackAssessment.value?.matched_alt_usernames;
+    if (!Array.isArray(usernames) || !usernames.length) {
+        return "";
+    }
+    return usernames.slice(0, 3).join(", ");
+});
 
 let successTimer: number | null = null;
 
@@ -147,6 +158,18 @@ onBeforeUnmount(() => {
                     class="text-xs bg-white/[0.07] text-slate-400 px-1.5 py-0.5 rounded-full shrink-0"
                 >
                     Private
+                </span>
+                <span
+                    v-if="altFollowbackAssessment?.is_alt_account_following_you"
+                    class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/30 shrink-0"
+                >
+                    Linked acc follows you
+                    <span
+                        v-if="matchedAltUsernamesLabel"
+                        class="ml-1 text-amber-200/80 font-normal"
+                    >
+                        ({{ matchedAltUsernamesLabel }})
+                    </span>
                 </span>
             </div>
             <p

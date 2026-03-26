@@ -537,7 +537,7 @@ def _assess_alt_account_followback(
     reference_profile_id: str,
     target_profile_id: str,
     target_profile: dict | None,
-    target_followers: set[str],
+    reference_follower_ids: set[str],
 ) -> dict[str, object]:
     primary_identity_keys: set[str] = {target_profile_id}
     username = _as_str((target_profile or {}).get("username"))
@@ -557,14 +557,11 @@ def _assess_alt_account_followback(
             "linked_alt_count": 0,
         }
 
-    cached_target_followers = (
-        target_followers
-        or db_service.get_target_profile_relationship_ids(
-            app_user_id=app_user_id,
-            reference_profile_id=reference_profile_id,
-            target_profile_id=target_profile_id,
-            relationship_type="followers",
-        )
+    # Check whether each alt account appears in the reference profile's own
+    # last-fetched followers list (i.e. "does the alt account follow me?").
+    my_followers = reference_follower_ids or db_service.get_latest_scanned_profile_ids(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
     )
 
     matched_alt_identity_keys: list[str] = []
@@ -573,7 +570,7 @@ def _assess_alt_account_followback(
         alt_identity_key = link.get("alt_identity_key")
         if not isinstance(alt_identity_key, str):
             continue
-        if alt_identity_key not in cached_target_followers:
+        if alt_identity_key not in my_followers:
             continue
         matched_alt_identity_keys.append(alt_identity_key)
         alt_username = link.get("alt_normalized_username") or alt_identity_key
@@ -595,6 +592,34 @@ def _assess_alt_account_followback(
         "matched_alt_usernames": matched_alt_usernames,
         "linked_alt_count": linked_alt_count,
     }
+
+
+def get_alt_followback_assessment_for_target(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_id: str,
+    target_username: str | None = None,
+    reference_follower_ids: set[str] | None = None,
+) -> dict[str, object]:
+    target_profile = db_service.get_target_profile(
+        app_user_id, reference_profile_id, target_profile_id
+    )
+    normalized_username = _as_str(target_username)
+    if target_profile is None:
+        target_profile = (
+            {"username": normalized_username} if normalized_username else None
+        )
+    elif normalized_username and not _as_str(target_profile.get("username")):
+        target_profile = {**target_profile, "username": normalized_username}
+
+    return _assess_alt_account_followback(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+        target_profile=target_profile,
+        reference_follower_ids=reference_follower_ids or set(),
+    )
 
 
 def _load_followback_computation_context(
@@ -630,7 +655,7 @@ def _load_followback_computation_context(
         reference_profile_id=reference_profile_id,
         target_profile_id=pk_id,
         target_profile=target_profile,
-        target_followers=target_followers,
+        reference_follower_ids=latest_follower_ids,
     )
     feature_breakdown = _build_feature_breakdown(
         target_profile=target_profile,

@@ -471,12 +471,12 @@ async function submitFeedback() {
                         </p>
                         <p
                             v-if="altFollowbackAssessment?.is_alt_account_following_you"
-                            class="mt-1 inline-flex items-center px-2 py-1 rounded-full text-[11px] font-semibold border bg-amber-500/15 text-amber-300 border-amber-500/30"
+                            class="mt-2 inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold border bg-amber-500/18 text-amber-200 border-amber-400/35 shadow-sm shadow-amber-950/30"
                         >
-                            Alt acc follows you
+                            Linked acc follows you
                             <span
                                 v-if="matchedAltUsernamesLabel"
-                                class="ml-1 text-amber-200/80 font-normal"
+                                class="ml-1 text-amber-100/85 font-normal"
                             >
                                 ({{ matchedAltUsernamesLabel }})
                             </span>

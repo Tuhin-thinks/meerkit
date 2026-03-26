@@ -288,16 +288,19 @@ onMounted(async () => {
 </script>
 
 <template>
-    <div :class="compact ? 'p-4' : 'p-5 md:p-6'">
+    <div
+        class="rounded-2xl border border-white/10 bg-white/[0.035] shadow-lg shadow-black/10"
+        :class="compact ? 'p-4' : 'p-5 md:p-6'"
+    >
         <!-- Header -->
         <div class="flex items-center justify-between gap-3 mb-1">
             <h3 class="text-base font-semibold text-slate-100">{{ title }}</h3>
             <button
-                class="text-xs text-slate-600 hover:text-slate-300 transition-colors"
+                class="text-xs text-slate-400 hover:text-slate-100 transition-colors"
                 :disabled="altLinksLoading"
                 @click="loadAlternativeLinks"
             >
-                {{ altLinksLoading ? "Refreshing\u2026" : "\u21ba Refresh" }}
+                {{ altLinksLoading ? "Refreshing..." : "Refresh" }}
             </button>
         </div>
         <p class="text-xs text-slate-500 mb-5 leading-relaxed">
@@ -382,41 +385,52 @@ onMounted(async () => {
         <!-- Section divider + count -->
         <template v-if="groupedAltLinks.length">
             <div class="flex items-center gap-3 mt-6 mb-2">
-                <div class="h-px flex-1 bg-white/[0.05]" />
+                <div class="h-px flex-1 bg-white/[0.10]" />
                 <span
-                    class="text-[10px] uppercase tracking-widest text-slate-600 select-none"
+                    class="text-[10px] uppercase tracking-widest text-slate-400 select-none"
                 >
                     {{ groupedAltLinks.length }} registered
                 </span>
-                <div class="h-px flex-1 bg-white/[0.05]" />
+                <div class="h-px flex-1 bg-white/[0.10]" />
             </div>
 
             <!-- Flat list of account groups -->
-            <div class="space-y-0.5">
+            <div class="space-y-2">
                 <div v-for="group in groupedAltLinks" :key="group.primary">
                     <!-- Summary row -->
                     <div
-                        class="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/[0.04] transition-colors group/row"
+                        class="flex items-center gap-3 rounded-xl border border-white/[0.07] bg-white/[0.03] px-3 py-2.5 transition-colors hover:bg-white/[0.06] hover:border-white/[0.12] group/row"
                     >
                         <span
-                            class="w-1.5 h-1.5 rounded-full bg-violet-400/50 shrink-0"
+                            class="w-2 h-2 rounded-full bg-cyan-300/80 shadow-[0_0_10px_rgba(103,232,249,0.25)] shrink-0"
                         />
                         <span
-                            class="text-sm font-medium text-slate-200 shrink-0 max-w-[28%] truncate"
+                            class="text-sm font-semibold text-slate-100 shrink-0 max-w-[28%] truncate"
                             >@{{ group.primary }}</span
                         >
-                        <span
-                            class="text-slate-700 shrink-0 text-[11px] select-none"
-                            >\u2192</span
-                        >
-                        <span class="text-xs text-slate-500 flex-1 truncate">{{
+                        <span class="shrink-0 text-slate-400" aria-hidden="true">
+                            <svg
+                                class="w-4 h-4"
+                                viewBox="0 0 20 20"
+                                fill="none"
+                            >
+                                <path
+                                    d="M4 10h11m0 0-4-4m4 4-4 4"
+                                    stroke="currentColor"
+                                    stroke-width="1.6"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                />
+                            </svg>
+                        </span>
+                        <span class="text-xs text-slate-300 flex-1 truncate">{{
                             group.summary
                         }}</span>
 
                         <!-- LinkedIn indicator -->
                         <svg
                             v-if="group.linkedinAccounts.length"
-                            class="w-3 h-3 text-sky-600/70 shrink-0"
+                            class="w-3.5 h-3.5 text-sky-400 shrink-0"
                             viewBox="0 0 24 24"
                             fill="currentColor"
                         >
@@ -427,15 +441,15 @@ onMounted(async () => {
 
                         <!-- Hover actions -->
                         <div
-                            class="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0"
+                            class="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity shrink-0"
                         >
                             <button
                                 type="button"
-                                class="text-[10px] px-1.5 py-0.5 rounded transition-colors"
+                                class="text-[10px] px-2 py-1 rounded-md transition-colors"
                                 :class="
                                     editingGroup === group.primaryIdentityKey
-                                        ? 'text-violet-400 hover:text-violet-300 bg-violet-500/10'
-                                        : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.06]'
+                                        ? 'text-violet-200 hover:text-white bg-violet-500/20 border border-violet-400/20'
+                                        : 'text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06]'
                                 "
                                 @click="
                                     toggleEditingGroup(group.primaryIdentityKey)
@@ -449,7 +463,7 @@ onMounted(async () => {
                             </button>
                             <button
                                 type="button"
-                                class="text-[10px] text-rose-600 hover:text-rose-400 px-1.5 py-0.5 rounded hover:bg-rose-500/[0.08] transition-colors"
+                                class="text-[10px] text-rose-300 hover:text-white px-2 py-1 rounded-md border border-rose-400/15 bg-rose-500/[0.08] hover:bg-rose-500/[0.14] transition-colors"
                                 @click="
                                     deleteGroupLinks(
                                         group.primaryIdentityKey,
@@ -465,7 +479,7 @@ onMounted(async () => {
                     <!-- Inline edit panel -->
                     <div
                         v-if="editingGroup === group.primaryIdentityKey"
-                        class="mx-2 mb-2 pl-3 border-l border-white/[0.07] pt-1 space-y-0.5"
+                        class="mx-3 mb-2 rounded-b-xl border-x border-b border-white/[0.07] bg-white/[0.025] px-4 pb-3 pt-2 space-y-1"
                     >
                         <!-- LinkedIn pills -->
                         <div
@@ -475,7 +489,7 @@ onMounted(async () => {
                             <span
                                 v-for="li in group.linkedinAccounts"
                                 :key="li"
-                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-sky-500/10 text-sky-400 border border-sky-500/15"
+                                class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium bg-sky-500/12 text-sky-300 border border-sky-400/20"
                             >
                                 <svg
                                     class="w-2.5 h-2.5 shrink-0"
@@ -494,13 +508,13 @@ onMounted(async () => {
                         <div
                             v-for="entry in group.entries"
                             :key="entry.link_id"
-                            class="flex items-center gap-2 py-0.5 group/alt"
+                            class="flex items-center gap-2 rounded-lg px-2 py-1.5 bg-white/[0.025] group/alt"
                         >
                             <span
-                                class="w-1 h-1 rounded-full bg-slate-700 shrink-0"
+                                class="w-1.5 h-1.5 rounded-full bg-slate-400/70 shrink-0"
                             />
                             <span
-                                class="text-xs text-slate-400 flex-1 truncate"
+                                class="text-xs text-slate-200 flex-1 truncate"
                             >
                                 @{{
                                     entry.alt_normalized_username ||
@@ -509,7 +523,7 @@ onMounted(async () => {
                             </span>
                             <button
                                 type="button"
-                                class="opacity-0 group-hover/alt:opacity-100 text-[10px] text-rose-500 hover:text-rose-300 transition-all shrink-0 px-1"
+                                class="opacity-0 group-hover/alt:opacity-100 text-[10px] text-rose-300 hover:text-white transition-all shrink-0 rounded px-2 py-0.5 hover:bg-rose-500/[0.12]"
                                 @click="
                                     deleteAlternativeLink(
                                         entry.primary_identity_key,
@@ -517,7 +531,7 @@ onMounted(async () => {
                                     )
                                 "
                             >
-                                \u00d7
+                                Remove
                             </button>
                         </div>
 
@@ -543,7 +557,7 @@ onMounted(async () => {
                                 </button>
                                 <button
                                     type="button"
-                                    class="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+                                    class="text-xs text-slate-400 hover:text-slate-200 transition-colors"
                                     @click="editingGroup = null"
                                 >
                                     close
@@ -557,7 +571,7 @@ onMounted(async () => {
 
         <div
             v-else-if="!altLinksLoading"
-            class="mt-6 py-4 text-center text-slate-700"
+            class="mt-6 rounded-xl border border-dashed border-white/[0.10] bg-white/[0.02] py-5 text-center text-slate-500"
         >
             <p class="text-xs">No linked accounts yet</p>
         </div>
