@@ -1,7 +1,11 @@
 
 # Meerkit – Instagram Unfollower Tracker & Growth Toolkit
 
-Meerkit is an Instagram unfollower tracker and follower analysis tool that helps you find who unfollowed you, analyze followers vs following, automate batch actions, and predict follow-backs.
+👉🏻 Find out who doesn't follow you back on Instagram and generate a clean unfollower list.
+
+👉🏻 **Meerkit** helps you compare followers vs following, track changes over time, and grow your account with data-driven insights.
+
+👉🏻 Runs locally with full control over your data.
 
 [![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.0-brightgreen?logo=flask)](https://flask.palletsprojects.com/)
