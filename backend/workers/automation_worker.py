@@ -169,6 +169,8 @@ def _execute_action(
             )
             return
 
+        automation_runner.mark_action_heartbeat(action_id)
+
         success = executor(
             item=item,
             instagram_user=instagram_user,
@@ -181,6 +183,7 @@ def _execute_action(
 
         # Respect rate limits between actions — skip delay after last item.
         if idx < len(pending_items) - 1:
+            automation_runner.mark_action_heartbeat(action_id)
             inter_action_delay()
 
     # Determine final status based on outcome counts.

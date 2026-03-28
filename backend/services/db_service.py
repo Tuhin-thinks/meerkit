@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import threading
-from dataclasses import asdict
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -35,7 +35,9 @@ class _SerializableEncoder(json.JSONEncoder):
             logger.warning(
                 f"Converting {type(o).__name__} object to dict during JSON encoding"
             )
-            return asdict(o) if hasattr(o, "__dataclass_fields__") else o.__dict__
+            return (
+                asdict(o) if is_dataclass(o) and not isinstance(o, type) else o.__dict__
+            )
         # Fall back to default behavior for other types
         return super().default(o)
 
@@ -1892,6 +1894,7 @@ def update_automation_action(action_id: str, **fields: object) -> None:
         "error",
         "queued_at",
         "started_at",
+        "last_heartbeat_at",
         "completed_at",
         "config_json",
     }
@@ -1941,7 +1944,11 @@ def list_automation_actions(
                 """,
                 (app_user_id, reference_profile_id, limit),
             )
-        return [_normalize_action_row(r) for r in cursor.fetchall()]
+        return [
+            action
+            for row in cursor.fetchall()
+            if (action := _normalize_action_row(row)) is not None
+        ]
 
 
 def list_recoverable_automation_actions(app_user_id: str) -> list[dict]:
@@ -1957,7 +1964,11 @@ def list_recoverable_automation_actions(app_user_id: str) -> list[dict]:
             """,
             (app_user_id,),
         )
-        return [_normalize_action_row(r) for r in cursor.fetchall()]
+        return [
+            action
+            for row in cursor.fetchall()
+            if (action := _normalize_action_row(row)) is not None
+        ]
 
 
 def insert_automation_action_items(items: list[dict]) -> None:
@@ -2021,7 +2032,11 @@ def list_automation_action_items(
                 "SELECT * FROM automation_action_items WHERE action_id = ? ORDER BY create_date ASC",
                 (action_id,),
             )
-        return [_normalize_action_item_row(r) for r in cursor.fetchall()]
+        return [
+            item
+            for row in cursor.fetchall()
+            if (item := _normalize_action_item_row(row)) is not None
+        ]
 
 
 def update_automation_action_item(item_id: str, **fields: object) -> None:

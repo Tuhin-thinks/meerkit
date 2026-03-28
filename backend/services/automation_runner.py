@@ -8,12 +8,13 @@ analogous to prediction_runner for prediction_tasks.
 import threading
 from datetime import datetime, timedelta
 
+from backend.config import AUTOMATION_STALE_TIMEOUT_MINUTES
 from backend.services import db_service
 
 _state_lock = threading.Lock()
 # In-memory overlay for actions currently in-flight — key: action_id
 _states: dict[str, dict] = {}
-_STALE_RUNNING_TIMEOUT = timedelta(minutes=10)
+_STALE_RUNNING_TIMEOUT = timedelta(minutes=AUTOMATION_STALE_TIMEOUT_MINUTES)
 
 
 def _now_iso() -> str:
@@ -48,10 +49,12 @@ def is_stale_running_action(action: dict | None) -> bool:
         return False
     status = action.get("status")
     if status == "running":
-        started_at = _parse_timestamp(action.get("started_at"))
-        if started_at is None:
+        last_activity_at = _parse_timestamp(action.get("last_heartbeat_at"))
+        if last_activity_at is None:
+            last_activity_at = _parse_timestamp(action.get("started_at"))
+        if last_activity_at is None:
             return True
-        return datetime.now() - started_at > _STALE_RUNNING_TIMEOUT
+        return datetime.now() - last_activity_at > _STALE_RUNNING_TIMEOUT
     if status == "queued":
         queued_at = _parse_timestamp(action.get("queued_at"))
         if queued_at is None:
@@ -70,10 +73,11 @@ def normalize_action(action: dict | None) -> dict | None:
 
 
 def _fail_stale_action(action: dict) -> dict | None:
+    timeout_minutes = int(_STALE_RUNNING_TIMEOUT.total_seconds() // 60)
     msg = (
-        "Automation action stayed queued for more than 10 minutes."
+        f"Automation action stayed queued for more than {timeout_minutes} minutes."
         if action.get("status") == "queued"
-        else "Automation action became inactive after running for more than 10 minutes."
+        else f"Automation action became inactive after running for more than {timeout_minutes} minutes."
     )
     return mark_action_error(action["action_id"], msg)
 
@@ -83,9 +87,23 @@ def get_action_status(action_id: str) -> dict | None:
 
 
 def mark_action_running(action_id: str) -> dict | None:
+    now = _now_iso()
     db_service.update_automation_action(
-        action_id, status="running", started_at=_now_iso(), error=None
+        action_id,
+        status="running",
+        started_at=now,
+        last_heartbeat_at=now,
+        completed_at=None,
+        error=None,
     )
+    action = db_service.get_automation_action(action_id)
+    if action:
+        _set_state(action_id, action)
+    return action
+
+
+def mark_action_heartbeat(action_id: str) -> dict | None:
+    db_service.update_automation_action(action_id, last_heartbeat_at=_now_iso())
     action = db_service.get_automation_action(action_id)
     if action:
         _set_state(action_id, action)
@@ -96,8 +114,13 @@ def mark_action_completed(action_id: str) -> dict | None:
     current = get_action_status(action_id)
     if current and current.get("status") == "cancelled":
         return current
+    now = _now_iso()
     db_service.update_automation_action(
-        action_id, status="completed", completed_at=_now_iso(), error=None
+        action_id,
+        status="completed",
+        last_heartbeat_at=now,
+        completed_at=now,
+        error=None,
     )
     action = db_service.get_automation_action(action_id)
     if action:
@@ -107,8 +130,12 @@ def mark_action_completed(action_id: str) -> dict | None:
 
 def mark_action_partial(action_id: str) -> dict | None:
     """Mark the action as partial when some items completed and some failed."""
+    now = _now_iso()
     db_service.update_automation_action(
-        action_id, status="partial", completed_at=_now_iso()
+        action_id,
+        status="partial",
+        last_heartbeat_at=now,
+        completed_at=now,
     )
     action = db_service.get_automation_action(action_id)
     if action:
@@ -120,8 +147,13 @@ def mark_action_error(action_id: str, error: str) -> dict | None:
     current = _merge_state(db_service.get_automation_action(action_id))
     if current and current.get("status") == "cancelled":
         return current
+    now = _now_iso()
     db_service.update_automation_action(
-        action_id, status="error", error=error, completed_at=_now_iso()
+        action_id,
+        status="error",
+        error=error,
+        last_heartbeat_at=now,
+        completed_at=now,
     )
     action = db_service.get_automation_action(action_id)
     if action:
@@ -130,10 +162,12 @@ def mark_action_error(action_id: str, error: str) -> dict | None:
 
 
 def mark_action_cancelled(action_id: str) -> dict | None:
+    now = _now_iso()
     db_service.update_automation_action(
         action_id,
         status="cancelled",
-        completed_at=_now_iso(),
+        last_heartbeat_at=now,
+        completed_at=now,
         error="Cancelled by user.",
     )
     action = db_service.get_automation_action(action_id)
@@ -158,6 +192,7 @@ def record_item_completed(action_id: str) -> None:
     db_service.update_automation_action(
         action_id,
         completed_items=(action.get("completed_items") or 0) + 1,
+        last_heartbeat_at=_now_iso(),
     )
     if action:
         _set_state(action_id, db_service.get_automation_action(action_id) or action)
@@ -170,6 +205,7 @@ def record_item_failed(action_id: str) -> None:
     db_service.update_automation_action(
         action_id,
         failed_items=(action.get("failed_items") or 0) + 1,
+        last_heartbeat_at=_now_iso(),
     )
     if action:
         _set_state(action_id, db_service.get_automation_action(action_id) or action)

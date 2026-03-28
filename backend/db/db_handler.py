@@ -4,6 +4,8 @@ from pathlib import Path
 
 from backend.db import schemas
 
+_AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
+
 
 class SqliteDBHandler:
     """Base class for SQLite database handlers."""
@@ -23,7 +25,16 @@ class SqliteDBHandler:
             cursor = conn.cursor()
             for table_sql in schemas.schema_collection.values():
                 cursor.execute(table_sql)
+            self._ensure_automation_action_columns(cursor)
             conn.commit()
+
+    def _ensure_automation_action_columns(self, cursor: sqlite3.Cursor) -> None:
+        cursor.execute("PRAGMA table_info(automation_actions)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN not in existing_columns:
+            cursor.execute(
+                "ALTER TABLE automation_actions ADD COLUMN last_heartbeat_at TEXT"
+            )
 
     def __enter__(self):
         # Keep one connection per handler (and handler is thread-local in db_service).

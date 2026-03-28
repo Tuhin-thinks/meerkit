@@ -254,6 +254,7 @@ CREATE TABLE IF NOT EXISTS automation_actions (
     error TEXT,
     queued_at TEXT,
     started_at TEXT,
+    last_heartbeat_at TEXT,
     completed_at TEXT,
     create_date TEXT NOT NULL,
     update_date TEXT NOT NULL

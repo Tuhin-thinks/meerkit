@@ -1,3 +1,4 @@
+import os
 import random
 from pathlib import Path
 
@@ -22,6 +23,9 @@ MAX_IMAGE_DOWNLOAD_WORKERS = 10
 MAX_PREDICTION_REFRESH_WORKERS = 3
 MAX_AUTOMATION_WORKERS = 3
 MAX_USER_DETAILS_FETCH_THREADS = 8
+AUTOMATION_STALE_TIMEOUT_MINUTES = int(
+    os.environ.get("AUTOMATION_STALE_TIMEOUT_MINUTES", "10")
+)
 
 # Create directories on import so nothing needs to worry about them not existing
 for _d in [DATA_DIR, CACHE_DIR, USERS_DIR, SCANS_DIR, DIFFS_DIR, IMAGE_CACHE_DIR]:
