@@ -2,6 +2,7 @@ from typing import Any, cast
 
 from flask import Blueprint, jsonify, request
 
+from meerkit.config import HISTORY_DEFAULT_DAYS, HISTORY_MAX_DAYS
 from meerkit.routes import get_active_context
 from meerkit.services import account_handler, persistence
 from meerkit.services import db_service as _db_service
@@ -155,8 +156,15 @@ def history():
         return jsonify(body), status
 
     instagram_user = cast(dict, context)
+    try:
+        requested_days = int(request.args.get("days", HISTORY_DEFAULT_DAYS))
+    except (TypeError, ValueError):
+        requested_days = HISTORY_DEFAULT_DAYS
 
-    return jsonify(get_scan_history(instagram_user["instagram_user_id"]))
+    max_days = max(1, HISTORY_MAX_DAYS)
+    days = min(max(1, requested_days), max_days)
+
+    return jsonify(get_scan_history(instagram_user["instagram_user_id"], days))
 
 
 @bp.get("/scan-analytics")

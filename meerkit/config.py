@@ -73,6 +73,9 @@ PREDICTION_STALE_TIMEOUT_MINUTES = int(
 SCAN_STALE_STARTUP_GRACE_SECONDS = int(
     os.environ.get("SCAN_STALE_STARTUP_GRACE_SECONDS", "5")
 )
+# Default and maximum day-window for /history responses.
+HISTORY_DEFAULT_DAYS = int(os.environ.get("HISTORY_DEFAULT_DAYS", "7"))
+HISTORY_MAX_DAYS = int(os.environ.get("HISTORY_MAX_DAYS", "7"))
 
 # Downloads
 # HTTP request timeout (seconds) when downloading a user's profile picture.

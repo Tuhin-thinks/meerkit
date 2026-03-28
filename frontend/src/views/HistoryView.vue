@@ -1,22 +1,102 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import FollowerCard from '../components/FollowerCard.vue'
 import AnalyticsChart from '../components/AnalyticsChart.vue'
+import { HISTORY_REQUEST_DAYS } from '../constants/history'
 import * as api from '../services/api'
-import type { DiffResult } from '../types/follower'
+import type { DiffResult, ScanMeta } from '../types/follower'
 
 const props = defineProps<{
   profileId: string
 }>()
 
 const activeTab = ref<'history' | 'analytics'>('history')
+const UNKNOWN_DATE_KEY = 'unknown-date'
 
 const { data: history, isLoading } = useQuery({
-  queryKey: ['history', props.profileId],
-  queryFn: api.getHistory,
+  queryKey: ['history', props.profileId, HISTORY_REQUEST_DAYS],
+  queryFn: () => api.getHistory(HISTORY_REQUEST_DAYS),
   staleTime: Infinity,
   refetchOnWindowFocus: false,
+})
+
+interface ScanDateGroup {
+  key: string
+  label: string
+  scans: ScanMeta[]
+  totalFollowers: number
+  totalUnfollowers: number
+  sortValue: number
+}
+
+function getDatePartsKey(iso: string) {
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) {
+    return null
+  }
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getDateLabelFromKey(key: string) {
+  if (key === UNKNOWN_DATE_KEY) {
+    return 'Unknown date'
+  }
+  const [year, month, day] = key.split('-').map((value) => Number(value))
+  if (!year || !month || !day) {
+    return key
+  }
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function parseTimestamp(value: string) {
+  const timestamp = Date.parse(value)
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+const groupedHistory = computed<ScanDateGroup[]>(() => {
+  const scans = (history.value || []).slice().sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+  const grouped = new Map<string, ScanMeta[]>()
+
+  for (const scan of scans) {
+    const dateKey = getDatePartsKey(scan.timestamp) || UNKNOWN_DATE_KEY
+    const bucket = grouped.get(dateKey)
+    if (bucket) {
+      bucket.push(scan)
+      continue
+    }
+    grouped.set(dateKey, [scan])
+  }
+
+  return Array.from(grouped.entries())
+    .map(([key, groupedScans]) => {
+      const firstScan = groupedScans[0]
+      const totals = groupedScans.reduce(
+        (acc, scan) => {
+          acc.totalFollowers += typeof scan.follower_count === 'number' ? scan.follower_count : 0
+          acc.totalUnfollowers += typeof scan.unfollower_count === 'number' ? scan.unfollower_count : 0
+          return acc
+        },
+        { totalFollowers: 0, totalUnfollowers: 0 },
+      )
+      return {
+        key,
+        label: getDateLabelFromKey(key),
+        scans: groupedScans,
+        totalFollowers: totals.totalFollowers,
+        totalUnfollowers: totals.totalUnfollowers,
+        sortValue: key === UNKNOWN_DATE_KEY ? -1 : parseTimestamp(firstScan.timestamp),
+      }
+    })
+    .sort((a, b) => b.sortValue - a.sortValue)
 })
 
 const selectedDiff = ref<DiffResult | null>(null)
@@ -147,41 +227,73 @@ async function handleLinkedAccountsSaved() {
       </div>
 
       <!-- Scan list -->
-      <div v-else class="grid gap-3">
-        <div
-          v-for="scan in history"
-          :key="scan.scan_id"
-          class="bg-[#16213a] rounded-xl border border-white/[0.07] px-5 py-4 flex items-center justify-between gap-4 card-hover transition-all"
+      <div v-else class="space-y-3">
+        <details
+          v-for="(group, index) in groupedHistory"
+          :key="group.key"
+          :open="index === 0"
+          class="rounded-xl border border-white/[0.07] bg-[#101b30]/70"
         >
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-slate-200">
-              {{ formatDate(scan.timestamp) }}
-            </p>
-            <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <summary class="cursor-pointer list-none px-4 py-3 flex items-center justify-between gap-3 border-b border-white/[0.06]">
+            <span class="text-sm font-semibold text-slate-200">{{ group.label }}</span>
+            <div class="flex flex-wrap items-center justify-end gap-1.5 text-[11px]">
+              <span class="text-slate-400">{{ group.scans.length }} scans</span>
               <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 font-semibold">
-                +{{ safeCount(scan.follower_count).toLocaleString() }} followers
+                +{{ group.totalFollowers.toLocaleString() }}
               </span>
               <span class="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300 font-semibold">
-                -{{ safeCount(scan.unfollower_count).toLocaleString() }} unfollowers
+                -{{ group.totalUnfollowers.toLocaleString() }}
               </span>
-              <span class="text-slate-500">· {{ scan.scan_id }}</span>
+            </div>
+          </summary>
+
+          <div class="grid gap-3 p-3">
+            <div
+              v-for="scan in group.scans"
+              :key="scan.scan_id"
+              class="bg-[#16213a] rounded-xl border border-white/[0.07] px-5 py-4 flex items-center justify-between gap-4 card-hover transition-all"
+            >
+              <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-200">
+                  {{ formatDate(scan.timestamp) }}
+                </p>
+                <div class="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 font-semibold">
+                    +{{ safeCount(scan.follower_count).toLocaleString() }} followers
+                  </span>
+                  <span class="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300 font-semibold">
+                    -{{ safeCount(scan.unfollower_count).toLocaleString() }} unfollowers
+                  </span>
+                  <span class="text-slate-500">· {{ scan.scan_id }}</span>
+                </div>
+              </div>
+
+              <button
+                v-if="scan.diff_id"
+                :disabled="loadingDiffId === scan.diff_id"
+                class="shrink-0 text-sm text-violet-400 hover:text-violet-300 font-medium px-3 py-1.5 rounded-lg hover:bg-violet-500/10 disabled:opacity-50 transition-colors"
+                @click="viewDiff(scan.diff_id!)"
+              >
+                <span
+                  v-if="loadingDiffId === scan.diff_id"
+                  class="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-1"
+                />
+                View diff
+              </button>
+              <span v-else class="shrink-0 text-xs text-slate-600 italic">No previous scan</span>
+            </div>
+
+            <div class="rounded-xl border border-white/[0.07] bg-[#0f182b] px-5 py-3 flex flex-wrap items-center gap-2 text-[11px]">
+              <span class="text-slate-400 font-semibold">Day total</span>
+              <span class="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-emerald-300 font-semibold">
+                +{{ group.totalFollowers.toLocaleString() }} followers
+              </span>
+              <span class="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-rose-300 font-semibold">
+                -{{ group.totalUnfollowers.toLocaleString() }} unfollowers
+              </span>
             </div>
           </div>
-
-          <button
-            v-if="scan.diff_id"
-            :disabled="loadingDiffId === scan.diff_id"
-            class="shrink-0 text-sm text-violet-400 hover:text-violet-300 font-medium px-3 py-1.5 rounded-lg hover:bg-violet-500/10 disabled:opacity-50 transition-colors"
-            @click="viewDiff(scan.diff_id!)"
-          >
-            <span
-              v-if="loadingDiffId === scan.diff_id"
-              class="inline-block w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mr-1"
-            />
-            View diff
-          </button>
-          <span v-else class="shrink-0 text-xs text-slate-600 italic">No previous scan</span>
-        </div>
+        </details>
       </div>
     </div>
 

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { HISTORY_REQUEST_DAYS } from '../constants/history'
 import type {
   ScanStatus,
   ScanSummary,
@@ -109,8 +110,8 @@ export const getSummary = () =>
 export const getLatestDiff = () =>
   http.get<DiffResult | null>('/diff/latest', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
 
-export const getHistory = () =>
-  http.get<ScanMeta[]>('/history', { params: { profile_id: activeInstagramUserId } }).then((r) => r.data)
+export const getHistory = (days: number = HISTORY_REQUEST_DAYS) =>
+  http.get<ScanMeta[]>('/history', { params: { profile_id: activeInstagramUserId, days } }).then((r) => r.data)
 
 export const getAnalytics = (days: number = 30) =>
   http.get<Array<{ date: string; new_followers: number; unfollowers: number; total_followers: number }>>('/scan-analytics', { params: { profile_id: activeInstagramUserId, days } }).then((r) => r.data)
