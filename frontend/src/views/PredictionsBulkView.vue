@@ -205,9 +205,9 @@ function parseTargets(raw: string): BatchRow[] {
         .map((token) => token.trim())
         .filter(Boolean);
 
-    const deduped: BatchRow[] = [];
-    const seen = new Set<string>();
-    for (const token of tokens) {
+    const dedupedMap = new Map<string, BatchRow>();
+    const lastIndexByKey = new Map<string, number>();
+    tokens.forEach((token, index) => {
         const linkUsername = extractInstagramUsername(token);
         const normalizedToken = (linkUsername || token).replace(/^@/, "").trim();
 
@@ -230,20 +230,25 @@ function parseTargets(raw: string): BatchRow[] {
             : username
               ? `username:${username.toLowerCase()}`
               : `invalid:${token.toLowerCase()}`;
-        if (!seen.has(dedupeKey)) {
-            seen.add(dedupeKey);
-            deduped.push({
-                rawInput: token,
-                username,
-                userId,
-                status,
-                message,
-                prediction: null,
-                task: null,
-            });
-        }
-    }
-    return deduped;
+        dedupedMap.set(dedupeKey, {
+            rawInput: token,
+            username,
+            userId,
+            status,
+            message,
+            prediction: null,
+            task: null,
+        });
+        lastIndexByKey.set(dedupeKey, index);
+    });
+
+    return Array.from(dedupedMap.entries())
+        .sort(
+            ([firstKey], [secondKey]) =>
+                (lastIndexByKey.get(firstKey) ?? 0) -
+                (lastIndexByKey.get(secondKey) ?? 0),
+        )
+        .map(([, row]) => row);
 }
 
 function getRowTitle(row: BatchRow): string {

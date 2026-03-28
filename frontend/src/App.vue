@@ -6,6 +6,7 @@ import Dashboard from "./views/Dashboard.vue";
 import HistoryView from "./views/HistoryView.vue";
 import PredictionsBulkView from "./views/PredictionsBulkView.vue";
 import PredictionsHistoryView from "./views/PredictionsHistoryView.vue";
+import PredictionsHistorySessionView from "./views/PredictionsHistorySessionView.vue";
 import DiscoveryView from "./views/DiscoveryView.vue";
 import TasksView from "./views/TasksView.vue";
 import AutomationView from "./views/AutomationView.vue";
@@ -33,6 +34,7 @@ type AppView =
     | "history"
     | "predictions"
     | "predictions-history"
+    | "predictions-history-session"
     | "automation"
     | "automation-intelligent-follow"
     | "automation-batch-unfollow"
@@ -89,6 +91,7 @@ const currentView = computed<AppView>(() => {
             "history",
             "predictions",
             "predictions-history",
+            "predictions-history-session",
             "automation",
             "automation-intelligent-follow",
             "automation-batch-unfollow",
@@ -117,7 +120,10 @@ const activeTab = computed(() => {
     ) {
         return "automation";
     }
-    if (currentView.value === "predictions-history") {
+    if (
+        currentView.value === "predictions-history" ||
+        currentView.value === "predictions-history-session"
+    ) {
         return "predictions";
     }
     return currentView.value;
@@ -581,6 +587,14 @@ const discoveryUsername = computed(() => {
                 <KeepAlive>
                     <PredictionsHistoryView
                         v-if="currentView === 'predictions-history' && activeInstagramUser"
+                        :profile-id="activeInstagramUser.instagram_user_id"
+                        :profile-username="activeInstagramUser.username || undefined"
+                    />
+                </KeepAlive>
+
+                <KeepAlive>
+                    <PredictionsHistorySessionView
+                        v-if="currentView === 'predictions-history-session' && activeInstagramUser"
                         :profile-id="activeInstagramUser.instagram_user_id"
                         :profile-username="activeInstagramUser.username || undefined"
                     />

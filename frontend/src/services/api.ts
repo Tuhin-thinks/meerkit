@@ -14,6 +14,7 @@ import type {
   PredictionDetailResponse,
   PredictionFeedbackPayload,
   PredictionHistorySession,
+  PredictionSessionItem,
   RelationshipCacheStatusResponse,
   PredictionTask,
   TaskListResponse,
@@ -140,6 +141,15 @@ export const getPredictionHistory = (params?: {
       params: {
         profile_id: activeInstagramUserId,
         ...(params || {}),
+      },
+    })
+    .then((r) => r.data)
+
+export const getPredictionSessionItems = (predictionSessionId: string) =>
+  http
+    .get<PredictionSessionItem[]>(`/predictions/history/sessions/${encodeURIComponent(predictionSessionId)}`, {
+      params: {
+        profile_id: activeInstagramUserId,
       },
     })
     .then((r) => r.data)

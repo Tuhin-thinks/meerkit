@@ -9,6 +9,11 @@ const router = createRouter({
     { path: '/history', name: 'history', component: RoutePlaceholder },
     { path: '/predictions', name: 'predictions', component: RoutePlaceholder },
     { path: '/predictions/history', name: 'predictions-history', component: RoutePlaceholder },
+    {
+      path: '/predictions/history/sessions/:sessionId',
+      name: 'predictions-history-session',
+      component: RoutePlaceholder,
+    },
     { path: '/automation', name: 'automation', component: RoutePlaceholder },
     {
       path: '/automation/intelligent-batch-follow',

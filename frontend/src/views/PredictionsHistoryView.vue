@@ -27,6 +27,35 @@ function formatSessionCount(value: number): string {
     return `${value} ${value === 1 ? "account" : "accounts"}`;
 }
 
+function formatSessionLabel(sessionId: string): string {
+    if (sessionId.startsWith("legacy_ps_")) {
+        const datePart = sessionId.split("_").find((p) => /^\d{12}$/.test(p));
+        if (datePart) {
+            return datePart.slice(0, 8) + "_" + datePart.slice(8);
+        }
+    }
+    if (sessionId.startsWith("pred_session_")) {
+        const ts = Number(sessionId.split("_")[2]);
+        if (!Number.isNaN(ts) && ts > 0) {
+            const d = new Date(ts);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            const hours = String(d.getHours()).padStart(2, "0");
+            const mins = String(d.getMinutes()).padStart(2, "0");
+            return `${year}${month}${day}_${hours}${mins}`;
+        }
+    }
+    return sessionId.slice(-8);
+}
+
+function openPredictionSession(sessionId: string) {
+    void router.push({
+        name: "predictions-history-session",
+        params: { sessionId },
+    });
+}
+
 async function loadPredictionHistory(reset = false) {
     if (loading.value) {
         return;
@@ -151,7 +180,7 @@ onMounted(() => {
                 >
                     <div>
                         <p class="font-semibold text-sm text-slate-100">
-                            Session {{ entry.prediction_session_id.slice(-8) }}
+                            Session {{ formatSessionLabel(entry.prediction_session_id) }}
                         </p>
                         <p class="text-xs text-cyan-300 mt-1">
                             Scanned for {{ formatSessionCount(entry.prediction_count) }}
@@ -165,6 +194,12 @@ onMounted(() => {
                         >
                             Latest target: @{{ entry.latest_target_username }}
                         </p>
+                        <button
+                            class="btn-ghost mt-2 px-2.5 py-1 rounded-md text-[11px] font-semibold"
+                            @click="openPredictionSession(entry.prediction_session_id)"
+                        >
+                            Open predicted list
+                        </button>
                     </div>
 
                     <div>

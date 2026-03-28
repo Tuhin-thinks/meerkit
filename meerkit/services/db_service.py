@@ -1417,6 +1417,81 @@ def list_prediction_sessions(
     return sessions
 
 
+def list_predictions_for_session(
+    app_user_id: str,
+    reference_profile_id: str,
+    prediction_session_id: str,
+) -> list[dict]:
+    """Return all predictions in one session with profile summary enrichment."""
+    db = get_worker_db()
+    query = """
+        SELECT *
+        FROM predictions
+        WHERE app_user_id = ?
+          AND reference_profile_id = ?
+          AND COALESCE(NULLIF(prediction_session_id, ''), prediction_id) = ?
+        ORDER BY requested_at DESC, create_date DESC
+    """
+
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            query,
+            (app_user_id, reference_profile_id, prediction_session_id),
+        )
+        rows = cursor.fetchall()
+
+    results: list[dict] = []
+    for row in rows:
+        normalized = _normalize_prediction_row(row)
+        if normalized is None:
+            continue
+
+        target_profile_id = normalized.get("target_profile_id")
+        cached_profile = None
+        profile_pic_url = None
+        if isinstance(target_profile_id, str) and target_profile_id:
+            cached_profile = get_target_profile(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+            )
+            profile_pic_url = get_latest_cached_image_url(target_profile_id)
+
+        payload = normalized.get("result_payload")
+        payload_target_profile: dict[str, object] = {}
+        if isinstance(payload, dict):
+            candidate = payload.get("target_profile")
+            if isinstance(candidate, dict):
+                payload_target_profile = candidate
+
+        target_username = (
+            normalized.get("target_username")
+            or (cached_profile or {}).get("username")
+            or payload_target_profile.get("username")
+        )
+
+        normalized["target_profile_summary"] = {
+            "target_profile_id": target_profile_id,
+            "username": target_username,
+            "full_name": (cached_profile or {}).get("full_name")
+            or payload_target_profile.get("full_name"),
+            "follower_count": (cached_profile or {}).get("follower_count")
+            or payload_target_profile.get("follower_count"),
+            "following_count": (cached_profile or {}).get("following_count")
+            or payload_target_profile.get("following_count"),
+            "is_private": (cached_profile or {}).get("is_private"),
+            "is_verified": (cached_profile or {}).get("is_verified"),
+            "me_following_account": (cached_profile or {}).get("me_following_account"),
+            "being_followed_by_account": (cached_profile or {}).get(
+                "being_followed_by_account"
+            ),
+            "profile_pic_url": profile_pic_url,
+        }
+        results.append(normalized)
+    return results
+
+
 def get_latest_prediction_for_target(
     app_user_id: str,
     reference_profile_id: str,

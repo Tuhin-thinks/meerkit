@@ -74,6 +74,23 @@ export interface PredictionHistorySession {
   cancelled_count: number
 }
 
+export interface PredictionTargetProfileSummary {
+  target_profile_id: string | null
+  username: string | null
+  full_name: string | null
+  follower_count: number | null
+  following_count: number | null
+  is_private: boolean | null
+  is_verified: boolean | null
+  me_following_account: boolean | null
+  being_followed_by_account: boolean | null
+  profile_pic_url: string | null
+}
+
+export interface PredictionSessionItem extends PredictionRecord {
+  target_profile_summary?: PredictionTargetProfileSummary
+}
+
 export interface PredictionDetailResponse {
   prediction: PredictionRecord
   task: PredictionTask | null

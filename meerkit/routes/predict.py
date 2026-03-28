@@ -125,6 +125,22 @@ def prediction_history():
     return jsonify(predictions)
 
 
+@bp.get("/predictions/history/sessions/<prediction_session_id>")
+def prediction_history_session_items(prediction_session_id: str):
+    app_user_id, context = _active_scope()
+    if not app_user_id:
+        body, status = context
+        return jsonify(body), status
+
+    instagram_user = cast(dict, context)
+    items = db_service.list_predictions_for_session(
+        app_user_id=app_user_id,
+        reference_profile_id=instagram_user["instagram_user_id"],
+        prediction_session_id=prediction_session_id,
+    )
+    return jsonify(items)
+
+
 @bp.get("/predictions/<prediction_id>")
 def get_prediction(prediction_id: str):
     app_user_id, context = _active_scope()

@@ -79,6 +79,47 @@ def test_prediction_history_returns_persisted_rows(monkeypatch):
     ]
 
 
+def test_prediction_history_session_items_returns_rows(monkeypatch):
+    app = create_app()
+    client = app.test_client()
+
+    monkeypatch.setattr(
+        "meerkit.routes.predict.get_active_context",
+        lambda instagram_user_id_override=None: (
+            "app_test_user",
+            {"instagram_user_id": "ig_123"},
+        ),
+    )
+    monkeypatch.setattr(
+        "meerkit.routes.predict.db_service.list_predictions_for_session",
+        lambda **kwargs: [
+            {
+                "prediction_id": "pred_1",
+                "target_username": "alice",
+                "target_profile_summary": {
+                    "full_name": "Alice A",
+                    "profile_pic_url": "https://example.com/a.jpg",
+                },
+            }
+        ],
+    )
+
+    response = client.get("/api/predictions/history/sessions/pred_session_123")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload == [
+        {
+            "prediction_id": "pred_1",
+            "target_username": "alice",
+            "target_profile_summary": {
+                "full_name": "Alice A",
+                "profile_pic_url": "https://example.com/a.jpg",
+            },
+        }
+    ]
+
+
 def test_prediction_task_status_returns_normalized_error(monkeypatch):
     app = create_app()
     client = app.test_client()
