@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from backend.services.instagram_gateway import InstagramGateway, ii
+from meerkit.services.instagram_gateway import InstagramGateway, ii
 
 
 def _profile() -> ii.InstagramProfile:
@@ -18,7 +18,7 @@ def test_gateway_uses_cache_for_target_user_data(monkeypatch):
     gateway = InstagramGateway()
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         lambda **kwargs: (
             True,
             {"username": "cached-user", "account_followers_count": 12},
@@ -29,7 +29,7 @@ def test_gateway_uses_cache_for_target_user_data(monkeypatch):
         raise AssertionError("Instagram API tracker should not run on cache hit")
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         fail_if_called,
     )
 
@@ -50,7 +50,7 @@ def test_gateway_fetches_and_stores_on_cache_miss(monkeypatch):
     gateway = InstagramGateway()
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         lambda **kwargs: (False, None),
     )
 
@@ -61,12 +61,12 @@ def test_gateway_fetches_and_stores_on_cache_miss(monkeypatch):
         return "data/cache/app_1/ig_1/instagram_gateway/user_data_fetch/fake.json"
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.store_gateway_response",
+        "meerkit.services.instagram_gateway.store_gateway_response",
         capture_store,
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.ii.get_target_user_data",
+        "meerkit.services.instagram_gateway.ii.get_target_user_data",
         lambda profile, target_user_id: {
             "user_id": target_user_id,
             "username": "fresh-user",
@@ -78,7 +78,7 @@ def test_gateway_fetches_and_stores_on_cache_miss(monkeypatch):
         return execute()
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         run_tracker,
     )
 
@@ -113,12 +113,12 @@ def test_gateway_deserializes_relationship_records_from_cache(monkeypatch):
     ]
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         lambda **kwargs: (True, cached_payload),
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Tracker should not run on relationship cache hit")
         ),
@@ -147,12 +147,12 @@ def test_gateway_force_refresh_bypasses_cache_lookup(monkeypatch):
         return True, {"username": "stale-user"}
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         capture_lookup,
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.ii.get_target_user_data",
+        "meerkit.services.instagram_gateway.ii.get_target_user_data",
         lambda profile, target_user_id: {
             "user_id": target_user_id,
             "username": "fresh-user",
@@ -160,7 +160,7 @@ def test_gateway_force_refresh_bypasses_cache_lookup(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         lambda *, execute, **kwargs: execute(),
     )
 
@@ -182,12 +182,12 @@ def test_gateway_uses_cache_for_automation_user_lookup(monkeypatch):
     gateway = InstagramGateway()
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         lambda **kwargs: (True, "1234567890"),
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Tracker should not run on lookup cache hit")
         ),
@@ -209,26 +209,26 @@ def test_follow_action_bypasses_cache(monkeypatch):
     gateway = InstagramGateway()
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.load_gateway_response",
+        "meerkit.services.instagram_gateway.load_gateway_response",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Cache lookup should not run for follow action")
         ),
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.store_gateway_response",
+        "meerkit.services.instagram_gateway.store_gateway_response",
         lambda **kwargs: (_ for _ in ()).throw(
             AssertionError("Cache store should not run for follow action")
         ),
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.ii.follow_user_by_id",
+        "meerkit.services.instagram_gateway.ii.follow_user_by_id",
         lambda target_user_id, target_username, profile: 1,
     )
 
     monkeypatch.setattr(
-        "backend.services.instagram_gateway.instagram_api_usage_tracker.track_call",
+        "meerkit.services.instagram_gateway.instagram_api_usage_tracker.track_call",
         lambda *, execute, **kwargs: execute(),
     )
 

@@ -73,7 +73,7 @@ Open Terminal 1:
 
 ```bash
 source .venv/bin/activate
-flask --app backend.app run --debug --port 5000
+flask --app meerkit.app run --debug --port 5000
 ```
 
 You should see:
@@ -154,7 +154,7 @@ If port 5000 or 5173 is in use, change them:
 
 ```bash
 # Backend on port 5001
-flask --app backend.app run --port 5001
+flask --app meerkit.app run --port 5001
 
 # Frontend – edit frontend/vite.config.ts:
 # server: { port: 5174 }

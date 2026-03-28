@@ -27,7 +27,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 cd frontend && npm install && cd ..
-flask --app backend.app run --debug --port 5000
+flask --app meerkit.app run --debug --port 5000
 ```
 
 In another terminal:

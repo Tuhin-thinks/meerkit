@@ -60,7 +60,7 @@ pip install -e .
 cd frontend && npm install && cd ..
 
 # terminal 1
-flask --app backend.app run --debug --port 5000
+flask --app meerkit.app run --debug --port 5000
 
 # terminal 2
 cd frontend && npm run dev

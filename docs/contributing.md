@@ -216,7 +216,7 @@ All new features should include tests.
 ```python
 # tests/test_scan_runner.py
 import pytest
-from backend.services import scan_runner
+from meerkit.services import scan_runner
 
 def test_start_scan_success(mock_instagram_api):
     """Test starting a scan successfully."""

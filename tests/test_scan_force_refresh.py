@@ -50,7 +50,7 @@ def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp
         lambda *args: "diff_123",
     )
     monkeypatch.setattr(
-        "backend.services.account_handler.reconcile_followback_predictions",
+        "meerkit.services.account_handler.reconcile_followback_predictions",
         lambda **kwargs: 0,
     )
 

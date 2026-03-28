@@ -2,9 +2,9 @@ import sqlite3
 import threading
 from datetime import datetime, timedelta
 
-from backend.db.db_handler import SqliteDBHandler
-from backend.services import automation_runner, db_service
-from backend.workers import automation_worker
+from meerkit.db.db_handler import SqliteDBHandler
+from meerkit.services import automation_runner, db_service
+from meerkit.workers import automation_worker
 
 
 def _use_temp_worker_db(monkeypatch, tmp_path):

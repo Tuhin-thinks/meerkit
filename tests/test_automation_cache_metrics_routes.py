@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from backend.app import create_app
+from meerkit.app import create_app
 
 
 def test_cache_efficiency_requires_login(monkeypatch):
@@ -8,7 +8,7 @@ def test_cache_efficiency_requires_login(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.automation.get_active_context",
+        "meerkit.routes.automation.get_active_context",
         lambda instagram_user_id=None: (None, ({"error": "Not logged in"}, 401)),
     )
 
@@ -24,7 +24,7 @@ def test_cache_efficiency_returns_metrics(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.automation.get_active_context",
+        "meerkit.routes.automation.get_active_context",
         lambda instagram_user_id=None: (
             "app_1",
             {"instagram_user_id": "ig_1"},
@@ -32,7 +32,7 @@ def test_cache_efficiency_returns_metrics(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "backend.routes.automation.db_service.get_instagram_api_usage_summary",
+        "meerkit.routes.automation.db_service.get_instagram_api_usage_summary",
         lambda **kwargs: {
             "generated_at": "2026-03-22T10:00:00",
             "window_start_24h": "2026-03-21T10:00:00",
@@ -62,7 +62,7 @@ def test_cache_efficiency_returns_metrics(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "backend.routes.automation._cache_size_summary",
+        "meerkit.routes.automation._cache_size_summary",
         lambda cache_scope_dir: {"cache_size_bytes": 2048, "cache_file_count": 4},
     )
 
@@ -82,7 +82,7 @@ def test_cache_size_returns_scope_size(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.automation.get_active_context",
+        "meerkit.routes.automation.get_active_context",
         lambda instagram_user_id=None: (
             "app_1",
             {"instagram_user_id": "ig_1"},
@@ -90,7 +90,7 @@ def test_cache_size_returns_scope_size(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "backend.routes.automation._cache_size_summary",
+        "meerkit.routes.automation._cache_size_summary",
         lambda cache_scope_dir: {"cache_size_bytes": 4096, "cache_file_count": 8},
     )
 
@@ -104,7 +104,7 @@ def test_cache_size_returns_scope_size(monkeypatch):
 
 
 def test_cache_size_summary_counts_files(tmp_path: Path):
-    from backend.routes.automation import _cache_size_summary
+    from meerkit.routes.automation import _cache_size_summary
 
     scope = tmp_path / "cache_scope"
     (scope / "a").mkdir(parents=True)

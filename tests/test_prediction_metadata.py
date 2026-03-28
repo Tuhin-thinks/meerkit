@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import insta_interface as ii
-from backend.services import account_handler, prediction_runner
+from meerkit.services import account_handler, prediction_runner
 
 
 def test_extract_user_summary_includes_new_metadata_fields():

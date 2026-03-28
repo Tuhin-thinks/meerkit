@@ -10,7 +10,7 @@ from urllib.parse import quote, urlparse
 import requests
 import tqdm
 
-from backend.config import (
+from meerkit.config import (
     INSTA_ACTION_RETRY_COUNT,
     INSTA_FOLLOWERS_FETCH_PAGE_SIZE,
     INSTA_FOLLOWERS_LOOP_DELAY_SECONDS,

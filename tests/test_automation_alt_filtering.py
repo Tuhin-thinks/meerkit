@@ -1,4 +1,4 @@
-from backend.services import automation_service
+from meerkit.services import automation_service
 
 
 def test_prepare_batch_unfollow_excludes_when_linked_alt_follows_you(monkeypatch):

@@ -1,9 +1,9 @@
-from backend.app import create_app
+from meerkit.app import create_app
 
 
 def _mock_context(monkeypatch):
     monkeypatch.setattr(
-        "backend.routes.automation.get_active_context",
+        "meerkit.routes.automation.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {
@@ -22,7 +22,7 @@ def test_list_alternative_account_links(monkeypatch):
     _mock_context(monkeypatch)
 
     monkeypatch.setattr(
-        "backend.routes.automation.list_alt_links",
+        "meerkit.routes.automation.list_alt_links",
         lambda **kwargs: [
             {
                 "link_id": "link_1",
@@ -46,7 +46,7 @@ def test_add_alternative_account_links(monkeypatch):
     _mock_context(monkeypatch)
 
     monkeypatch.setattr(
-        "backend.routes.automation.add_alt_account_links",
+        "meerkit.routes.automation.add_alt_account_links",
         lambda **kwargs: {
             "primary_identity_key": "main_user",
             "added": 1,
@@ -82,7 +82,7 @@ def test_delete_alternative_account_link(monkeypatch):
     _mock_context(monkeypatch)
 
     monkeypatch.setattr(
-        "backend.routes.automation.remove_alt_link",
+        "meerkit.routes.automation.remove_alt_link",
         lambda **kwargs: True,
     )
 

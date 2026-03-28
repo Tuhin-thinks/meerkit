@@ -3,8 +3,8 @@ from datetime import datetime
 from pathlib import Path
 
 import insta_interface as ii
-from backend.services.db_service import generate_scan_diff, store_scan_info
-from backend.services.instagram_gateway import instagram_gateway
+from meerkit.services.db_service import generate_scan_diff, store_scan_info
+from meerkit.services.instagram_gateway import instagram_gateway
 
 
 def compare_followers(
@@ -59,7 +59,7 @@ def add_to_downloader_queue(
     profile: list[ii.FollowerUserRecord],
 ) -> None:
     """Add a follower's profile image URL to the downloader queue for async caching."""
-    from backend.services.downloader import enqueue_image_download
+    from meerkit.services.downloader import enqueue_image_download
 
     print(f"Enqueuing image download for {len(profile)} followers...")
     for follower in profile:
@@ -72,7 +72,7 @@ def add_to_downloader_queue(
 
 
 # ---------------------------------------------------------------------------
-# API-facing helpers (used by the Flask backend; do not call from CLI main())
+# API-facing helpers (used by the Flask meerkit app; do not call from CLI main())
 # ---------------------------------------------------------------------------
 
 
@@ -98,7 +98,7 @@ def run_scan_for_api(
     Fetch current followers, persist a timestamped snapshot, compute a diff
     against the previous snapshot, and return scan metadata.
 
-    Called by the Flask backend – never modifies insta_interface.py.
+    Called by the Flask meerkit app - never modifies insta_interface.py.
     """
     scans_dir = data_dir / "scans"
     diffs_dir = data_dir / "diffs"
@@ -144,7 +144,7 @@ def run_scan_for_api(
     # Compute and persist diff
     diff_id = generate_scan_diff(latest_scan_id, reference_profile_id, app_user_id)
 
-    from backend.services import account_handler
+    from meerkit.services import account_handler
 
     account_handler.reconcile_followback_predictions(
         app_user_id=app_user_id,

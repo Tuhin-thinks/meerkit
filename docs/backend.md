@@ -323,20 +323,20 @@ APP_SECRET_KEY=your-secret-key  # Session secret
 **Development:**
 
 ```bash
-flask --app backend.app run --debug --port 5000
+flask --app meerkit.app run --debug --port 5000
 ```
 
 **Production:**
 
 ```bash
 FLASK_ENV=production APP_SECRET_KEY=<secure-key> \
-  flask --app backend.app run --port 5000
+  flask --app meerkit.app run --port 5000
 ```
 
 Or use a production WSGI server:
 
 ```bash
-gunicorn -w 4 -b 0.0.0.0:5000 "backend.app:create_app()"
+gunicorn -w 4 -b 0.0.0.0:5000 "meerkit.app:create_app()"
 ```
 
 ## Testing

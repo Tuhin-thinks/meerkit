@@ -52,7 +52,7 @@ Instagram credentials are added through the authenticated app UI, not from envir
 
 ```bash
 source .venv/bin/activate
-flask --app backend.app run --debug --port 5000
+flask --app meerkit.app run --debug --port 5000
 ```
 
 ### Terminal 2: Frontend
@@ -67,7 +67,7 @@ npm run dev
 ```bash
 source .venv/bin/activate
 watchmedo auto-restart -d backend -p '*.py' -- \
-  flask --app backend.app run --debug --port 5000
+  flask --app meerkit.app run --debug --port 5000
 ```
 
 ## Code Style & Linting
@@ -166,7 +166,7 @@ No build needed, but optimize running:
 pip install gunicorn
 
 # Run with 4 worker processes
-gunicorn -w 4 -b 0.0.0.0:5000 "backend.app:create_app()"
+gunicorn -w 4 -b 0.0.0.0:5000 "meerkit.app:create_app()"
 ```
 
 Configuration options:
@@ -178,7 +178,7 @@ gunicorn \
   --timeout 120 \
   --access-logfile - \
   --error-logfile - \
-  "backend.app:create_app()"
+  "meerkit.app:create_app()"
 ```
 
 ## Debugging
@@ -189,7 +189,7 @@ With `debugpy` installed:
 
 ```bash
 # Run Flask with debugger
-python -m debugpy --listen 5678 -m flask --app backend.app run --port 5000
+python -m debugpy --listen 5678 -m flask --app meerkit.app run --port 5000
 ```
 
 Then attach your IDE debugger to port 5678.
@@ -258,7 +258,7 @@ def my_endpoint():
 2. Register in `backend/app.py`:
 
 ```python
-from backend.routes.new_feature import bp as new_feature_bp
+from meerkit.routes.new_feature import bp as new_feature_bp
 
 app.register_blueprint(new_feature_bp)
 ```
@@ -421,7 +421,7 @@ pip install -e .
 # Find process using port 5000
 lsof -i :5000  # On macOS/Linux
 # Or change port:
-flask --app backend.app run --port 5001
+flask --app meerkit.app run --port 5001
 ```
 
 ### Frontend proxy errors (ECONNREFUSED)
@@ -452,12 +452,12 @@ npm run dev
 
 ```bash
 # Profile with cProfile
-python -m cProfile -s cumtime -m flask --app backend.app run
+python -m cProfile -s cumtime -m flask --app meerkit.app run
 
 # Use py-spy for sampling
 pip install py-spy
 py-spy record -o profile.svg -- \
-  flask --app backend.app run --port 5000
+  flask --app meerkit.app run --port 5000
 ```
 
 ### Frontend

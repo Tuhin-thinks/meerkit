@@ -1,4 +1,4 @@
-from backend.app import create_app
+from meerkit.app import create_app
 
 
 def test_create_followback_prediction_returns_queued_payload(monkeypatch):
@@ -6,7 +6,7 @@ def test_create_followback_prediction_returns_queued_payload(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.predict.get_active_context",
+        "meerkit.routes.predict.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {
@@ -18,7 +18,7 @@ def test_create_followback_prediction_returns_queued_payload(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "backend.routes.predict.account_handler.request_followback_prediction",
+        "meerkit.routes.predict.account_handler.request_followback_prediction",
         lambda **kwargs: {
             "prediction": {
                 "prediction_id": "pred_123",
@@ -45,14 +45,14 @@ def test_prediction_history_returns_persisted_rows(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.predict.get_active_context",
+        "meerkit.routes.predict.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {"instagram_user_id": "ig_123"},
         ),
     )
     monkeypatch.setattr(
-        "backend.routes.predict.db_service.list_predictions",
+        "meerkit.routes.predict.db_service.list_predictions",
         lambda **kwargs: [
             {
                 "prediction_id": "pred_123",
@@ -80,14 +80,14 @@ def test_prediction_task_status_returns_normalized_error(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.predict.get_active_context",
+        "meerkit.routes.predict.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {"instagram_user_id": "ig_123"},
         ),
     )
     monkeypatch.setattr(
-        "backend.routes.predict.prediction_runner.get_task_status",
+        "meerkit.routes.predict.prediction_runner.get_task_status",
         lambda task_id: {
             "task_id": task_id,
             "prediction_id": "pred_123",
@@ -108,7 +108,7 @@ def test_relationship_cache_status_returns_payload(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.predict.get_active_context",
+        "meerkit.routes.predict.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {
@@ -120,7 +120,7 @@ def test_relationship_cache_status_returns_payload(monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        "backend.routes.predict.account_handler.get_target_relationship_cache_status",
+        "meerkit.routes.predict.account_handler.get_target_relationship_cache_status",
         lambda **kwargs: {
             "followers": {
                 "relationship_type": "followers",
@@ -148,7 +148,7 @@ def test_refresh_relationship_cache_requires_valid_type(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        "backend.routes.predict.get_active_context",
+        "meerkit.routes.predict.get_active_context",
         lambda instagram_user_id_override=None: (
             "app_test_user",
             {

@@ -1,4 +1,4 @@
-from backend.app import create_app
+from meerkit.app import create_app
 
 
 def test_instagram_api_usage_summary_requires_login():
@@ -17,11 +17,11 @@ def test_instagram_api_usage_summary_returns_grouped_payload(monkeypatch):
     client = app.test_client()
 
     monkeypatch.setattr(
-        'backend.routes.auth._current_app_user',
+        'meerkit.routes.auth._current_app_user',
         lambda: ('app_test_user', 'Test User'),
     )
     monkeypatch.setattr(
-        'backend.routes.auth.db_service.get_instagram_api_usage_summary',
+        'meerkit.routes.auth.db_service.get_instagram_api_usage_summary',
         lambda **kwargs: {
             'generated_at': '2026-03-22T10:00:00',
             'window_start_24h': '2026-03-21T10:00:00',
@@ -51,7 +51,7 @@ def test_instagram_api_usage_summary_returns_grouped_payload(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        'backend.routes.auth.auth_service.get_instagram_users',
+        'meerkit.routes.auth.auth_service.get_instagram_users',
         lambda app_user_id: [
             {'instagram_user_id': 'ig_123', 'name': 'Primary Account'}
         ],
