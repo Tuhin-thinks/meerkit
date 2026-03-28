@@ -41,6 +41,8 @@ const filterMeFollowing = ref(false);
 const filterMyFollower = ref(false);
 const minFollowBackProbability = ref(0);
 const minConfidence = ref(0);
+const followBackOperator = ref<">=" | "<=">(">=");
+const confidenceOperator = ref<">=" | "<=">(">=");
 const orderBy = ref<"follow_back" | "confidence">("follow_back");
 const batchPlaceholder = [
     "example_user",
@@ -113,20 +115,29 @@ const filteredRows = computed(() => {
         }
 
         const probabilityPercent = toPercent(row.prediction?.probability ?? null);
-        if (
-            minFollowBackProbability.value > 0 &&
-            (probabilityPercent === null ||
-                probabilityPercent < minFollowBackProbability.value)
-        ) {
-            return false;
+        if (minFollowBackProbability.value > 0 || minFollowBackProbability.value < 100) {
+            if (probabilityPercent === null) {
+                return false;
+            }
+            if (followBackOperator.value === ">=" && probabilityPercent < minFollowBackProbability.value) {
+                return false;
+            }
+            if (followBackOperator.value === "<=" && probabilityPercent > minFollowBackProbability.value) {
+                return false;
+            }
         }
 
         const confidencePercent = toPercent(row.prediction?.confidence ?? null);
-        if (
-            minConfidence.value > 0 &&
-            (confidencePercent === null || confidencePercent < minConfidence.value)
-        ) {
-            return false;
+        if (minConfidence.value > 0 || minConfidence.value < 100) {
+            if (confidencePercent === null) {
+                return false;
+            }
+            if (confidenceOperator.value === ">=" && confidencePercent < minConfidence.value) {
+                return false;
+            }
+            if (confidenceOperator.value === "<=" && confidencePercent > minConfidence.value) {
+                return false;
+            }
         }
 
         return true;
@@ -421,6 +432,8 @@ function resetFilters() {
     filterMyFollower.value = false;
     minFollowBackProbability.value = 0;
     minConfidence.value = 0;
+    followBackOperator.value = ">=";
+    confidenceOperator.value = ">=";
     orderBy.value = "follow_back";
 }
 
@@ -660,7 +673,31 @@ function openPredictionHistory() {
                     </label>
 
                     <label class="inline-flex items-center gap-2">
-                        <span>Follow back ≥ {{ minFollowBackProbability }}%</span>
+                        <div class="flex items-center gap-1">
+                            <button
+                                @click="followBackOperator = '>='"
+                                :class="[
+                                    'px-2 py-1 rounded text-xs font-semibold transition-colors',
+                                    followBackOperator === '>='
+                                        ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                                        : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+                                ]"
+                            >
+                                ≥
+                            </button>
+                            <button
+                                @click="followBackOperator = '<='"
+                                :class="[
+                                    'px-2 py-1 rounded text-xs font-semibold transition-colors',
+                                    followBackOperator === '<='
+                                        ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                                        : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+                                ]"
+                            >
+                                ≤
+                            </button>
+                        </div>
+                        <span>Follow back {{ minFollowBackProbability }}%</span>
                         <input
                             v-model.number="minFollowBackProbability"
                             type="range"
@@ -672,7 +709,31 @@ function openPredictionHistory() {
                     </label>
 
                     <label class="inline-flex items-center gap-2">
-                        <span>Confidence ≥ {{ minConfidence }}%</span>
+                        <div class="flex items-center gap-1">
+                            <button
+                                @click="confidenceOperator = '>='"
+                                :class="[
+                                    'px-2 py-1 rounded text-xs font-semibold transition-colors',
+                                    confidenceOperator === '>='
+                                        ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                                        : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+                                ]"
+                            >
+                                ≥
+                            </button>
+                            <button
+                                @click="confidenceOperator = '<='"
+                                :class="[
+                                    'px-2 py-1 rounded text-xs font-semibold transition-colors',
+                                    confidenceOperator === '<='
+                                        ? 'bg-cyan-500/30 text-cyan-300 border border-cyan-500/50'
+                                        : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
+                                ]"
+                            >
+                                ≤
+                            </button>
+                        </div>
+                        <span>Confidence {{ minConfidence }}%</span>
                         <input
                             v-model.number="minConfidence"
                             type="range"
