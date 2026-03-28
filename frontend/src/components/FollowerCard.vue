@@ -171,6 +171,12 @@ onBeforeUnmount(() => {
                         ({{ matchedAltUsernamesLabel }})
                     </span>
                 </span>
+                <span
+                    v-if="showLinkedAccountsAction && follower.account_not_accessible"
+                    class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-rose-500/15 text-rose-300 border-rose-500/30 shrink-0"
+                >
+                    Account not accessible
+                </span>
             </div>
             <p
                 v-if="follower.full_name"

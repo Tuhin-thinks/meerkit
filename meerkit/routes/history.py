@@ -10,6 +10,75 @@ from meerkit.services.db_service import get_scan_analytics, get_scan_history
 bp = Blueprint("history", __name__, url_prefix="/api")
 
 
+def _to_lower(value: str | None) -> str:
+    return (value or "").strip().lower()
+
+
+def _is_profile_inaccessible_message(message: str) -> bool:
+    return any(
+        token in message
+        for token in (
+            "could not load this target",
+            "could not load target",
+            "unable to load",
+            "failed to load",
+            "inaccessible",
+            "private",
+            "not authorized",
+            "forbidden",
+            "'nonetype' object is not subscriptable",
+            '"nonetype" object is not subscriptable',
+            "nonetype object is not subscriptable",
+        )
+    )
+
+
+def _target_is_not_accessible(error_message: str | None) -> bool:
+    normalized = _to_lower(error_message)
+    if not normalized:
+        return False
+    return _is_profile_inaccessible_message(normalized)
+
+
+def _collect_inaccessible_target_ids(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_ids: set[str],
+) -> set[str]:
+    inaccessible: set[str] = set()
+    for target_profile_id in target_profile_ids:
+        target_profile = _db_service.get_target_profile(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        if _target_is_not_accessible(
+            target_profile.get("last_error")
+            if isinstance(target_profile, dict)
+            else None
+        ):
+            inaccessible.add(target_profile_id)
+            continue
+
+        latest_task = _db_service.get_latest_prediction_task(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_id=target_profile_id,
+        )
+        if not isinstance(latest_task, dict):
+            continue
+        if latest_task.get("status") != "error":
+            continue
+        if _target_is_not_accessible(
+            latest_task.get("error")
+            if isinstance(latest_task.get("error"), str)
+            else None
+        ):
+            inaccessible.add(target_profile_id)
+    return inaccessible
+
+
 def _enrich_diff_with_alt_followback(
     diff: dict[str, Any] | None,
     *,
@@ -24,6 +93,24 @@ def _enrich_diff_with_alt_followback(
     reference_follower_ids: set[str] = _db_service.get_latest_scanned_profile_ids(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
+    )
+
+    target_profile_ids: set[str] = set()
+    for key in ("new_followers", "unfollowers"):
+        rows = diff.get(key)
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            target_profile_id = str(row.get("pk_id") or "").strip()
+            if target_profile_id:
+                target_profile_ids.add(target_profile_id)
+
+    inaccessible_target_ids = _collect_inaccessible_target_ids(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_ids=target_profile_ids,
     )
 
     enriched = dict(diff)
@@ -43,6 +130,8 @@ def _enrich_diff_with_alt_followback(
             enriched_rows.append(
                 {
                     **row,
+                    "account_not_accessible": target_profile_id
+                    in inaccessible_target_ids,
                     "alt_followback_assessment": account_handler.get_alt_followback_assessment_for_target(
                         app_user_id=app_user_id,
                         reference_profile_id=reference_profile_id,

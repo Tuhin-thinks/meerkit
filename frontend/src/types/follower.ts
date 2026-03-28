@@ -7,6 +7,7 @@ export interface FollowerRecord {
   username: string
   full_name: string
   is_private: boolean
+  account_not_accessible?: boolean
   alt_followback_assessment?: {
     is_alt_account_following_you?: boolean
     matched_alt_usernames?: string[]
