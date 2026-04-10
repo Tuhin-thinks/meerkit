@@ -1137,6 +1137,11 @@ def refresh_followback_prediction(
     metadata_full_name = _as_str(metadata.get("full_name"))
     metadata_follower_count = _as_int(metadata.get("account_followers_count"))
     metadata_following_count = _as_int(metadata.get("account_following_count"))
+    cached_target_profile = db_service.get_target_profile(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        target_profile_id=target_profile_id,
+    )
     db_service.upsert_target_profile(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -1151,6 +1156,7 @@ def refresh_followback_prediction(
         being_followed_by_account=bool(
             metadata.get("being_followed_by_account", False)
         ),
+        is_deactivated=(cached_target_profile or {}).get("is_deactivated"),
         fetch_status="metadata_only",
         metadata_fetched_at=metadata_time,
         last_error=None,
@@ -1170,6 +1176,7 @@ def refresh_followback_prediction(
 
     fetch_status = "ready"
     last_error: str | None = None
+    fetched_relationship_records: dict[str, list[ii.FollowerUserRecord]] = {}
 
     if fetch_relationships:
         fetch_map = {
@@ -1195,6 +1202,7 @@ def refresh_followback_prediction(
         for relationship in sorted(relationships_to_refresh):
             try:
                 records = fetch_map[relationship](target_profile_id)
+                fetched_relationship_records[relationship] = records
                 db_service.replace_target_profile_relationships(
                     app_user_id=app_user_id,
                     reference_profile_id=reference_profile_id,
@@ -1263,6 +1271,16 @@ def refresh_followback_prediction(
     if fetched_timestamps:
         latest_relationship_fetch = max(fetched_timestamps)
 
+    is_deactivated = (cached_target_profile or {}).get("is_deactivated")
+    if {
+        "followers",
+        "following",
+    }.issubset(fetched_relationship_records):
+        is_deactivated = bool(
+            not fetched_relationship_records["followers"]
+            and not fetched_relationship_records["following"]
+        )
+
     db_service.upsert_target_profile(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -1277,6 +1295,7 @@ def refresh_followback_prediction(
         being_followed_by_account=bool(
             metadata.get("being_followed_by_account", False)
         ),
+        is_deactivated=is_deactivated,
         fetch_status=fetch_status,
         metadata_fetched_at=metadata_time,
         relationships_fetched_at=latest_relationship_fetch,
@@ -1299,6 +1318,7 @@ def refresh_followback_prediction(
         "full_name": metadata_full_name,
         "follower_count": metadata_follower_count,
         "following_count": metadata_following_count,
+        "is_deactivated": is_deactivated,
         **_metadata_feature_subset(metadata),
     }
 
@@ -1375,6 +1395,7 @@ def get_target_relationship_cache_status(
             being_followed_by_account=bool(
                 metadata.get("being_followed_by_account", False)
             ),
+            is_deactivated=(cached_profile or {}).get("is_deactivated"),
             fetch_status=(cached_profile or {}).get("fetch_status") or "metadata_only",
             metadata_fetched_at=metadata_time,
             relationships_fetched_at=(cached_profile or {}).get(

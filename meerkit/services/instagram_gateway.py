@@ -258,6 +258,7 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
         force_refresh: bool = False,
+        fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         return self._tracked(
             app_user_id=app_user_id,
@@ -265,7 +266,11 @@ class InstagramGateway:
             category="followers_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_target_followers_v2(profile, target_user_id),
+            execute=lambda: ii.get_target_followers_v2(
+                profile,
+                target_user_id,
+                fetch_at_max=fetch_at_max,
+            ),
             cache_key_parts=self._relationship_cache_key(
                 operation="get_target_followers_v2",
                 target_user_id=target_user_id,
@@ -286,6 +291,7 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
         force_refresh: bool = False,
+        fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         return self._tracked(
             app_user_id=app_user_id,
@@ -293,7 +299,11 @@ class InstagramGateway:
             category="following_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_target_following_v2(profile, target_user_id),
+            execute=lambda: ii.get_target_following_v2(
+                profile,
+                target_user_id,
+                fetch_at_max=fetch_at_max,
+            ),
             cache_key_parts=self._relationship_cache_key(
                 operation="get_target_following_v2",
                 target_user_id=target_user_id,
@@ -313,6 +323,7 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
         force_refresh: bool = False,
+        fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         return self._tracked(
             app_user_id=app_user_id,
@@ -323,6 +334,7 @@ class InstagramGateway:
             execute=lambda: ii.get_current_followers_v2(
                 profile=profile,
                 store_data=False,
+                fetch_at_max=fetch_at_max,
             ),
             cache_key_parts=self._relationship_cache_key(
                 operation="get_current_followers_v2",
@@ -343,6 +355,7 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
         force_refresh: bool = False,
+        fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         return self._tracked(
             app_user_id=app_user_id,
@@ -351,7 +364,9 @@ class InstagramGateway:
             caller_service=caller_service,
             caller_method=caller_method,
             execute=lambda: ii.get_current_following_v2(
-                profile=profile, store_data=False
+                profile=profile,
+                store_data=False,
+                fetch_at_max=fetch_at_max,
             ),
             cache_key_parts=self._relationship_cache_key(
                 operation="get_current_following_v2",

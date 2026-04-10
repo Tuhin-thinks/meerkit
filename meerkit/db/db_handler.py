@@ -7,6 +7,7 @@ from meerkit.db import schemas
 
 _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
 _PREDICTIONS_SESSION_COLUMN = "prediction_session_id"
+_TARGET_PROFILES_DEACTIVATED_COLUMN = "is_deactivated"
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +31,7 @@ class SqliteDBHandler:
                 cursor.execute(table_sql)
             self._ensure_automation_action_columns(cursor)
             self._ensure_prediction_columns(cursor)
+            self._ensure_target_profile_columns(cursor)
             conn.commit()
 
     def _ensure_automation_action_columns(self, cursor: sqlite3.Cursor) -> None:
@@ -53,6 +55,14 @@ class SqliteDBHandler:
             ON predictions (app_user_id, reference_profile_id, prediction_session_id, requested_at)
             """
         )
+
+    def _ensure_target_profile_columns(self, cursor: sqlite3.Cursor) -> None:
+        cursor.execute("PRAGMA table_info(target_profiles)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if _TARGET_PROFILES_DEACTIVATED_COLUMN not in existing_columns:
+            cursor.execute(
+                "ALTER TABLE target_profiles ADD COLUMN is_deactivated INTEGER"
+            )
 
     def __enter__(self):
         # Keep one connection per handler (and handler is thread-local in db_service).

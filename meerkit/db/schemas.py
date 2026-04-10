@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS target_profiles (
     is_verified INTEGER,
     me_following_account INTEGER,
     being_followed_by_account INTEGER,
+    is_deactivated INTEGER,
     fetch_status TEXT NOT NULL DEFAULT 'pending',
     metadata_fetched_at TEXT,
     relationships_fetched_at TEXT,

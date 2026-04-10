@@ -284,12 +284,16 @@ def _batch_retrieve_scanned_data(
 
 
 def store_diff_locally(
-    scan_id: str, diff_data: dict[str, list[ii.FollowerUserRecord]], diff_id: str
+    scan_id: str,
+    diff_data: dict[str, list[ii.FollowerUserRecord]],
+    diff_id: str,
+    account_not_accessible_by_profile_id: dict[str, bool] | None = None,
 ) -> str:
     """Store the generated diff data as a local JSON file and return the file path."""
     import json
 
     diff_file_path = DIFFS_DIR / f"{diff_id}.json"
+    account_not_accessible_by_profile_id = account_not_accessible_by_profile_id or {}
     with open(diff_file_path, "w") as f:
         json.dump(
             {
@@ -299,10 +303,28 @@ def store_diff_locally(
                 "new_count": len(diff_data["new_followers"]),
                 "unfollow_count": len(diff_data["unfollowers"]),
                 "new_followers": [
-                    asdict(follower) for follower in diff_data["new_followers"]
+                    {
+                        **asdict(follower),
+                        "account_not_accessible": bool(
+                            account_not_accessible_by_profile_id.get(
+                                follower.pk_id,
+                                False,
+                            )
+                        ),
+                    }
+                    for follower in diff_data["new_followers"]
                 ],
                 "unfollowers": [
-                    asdict(unfollower) for unfollower in diff_data["unfollowers"]
+                    {
+                        **asdict(unfollower),
+                        "account_not_accessible": bool(
+                            account_not_accessible_by_profile_id.get(
+                                unfollower.pk_id,
+                                False,
+                            )
+                        ),
+                    }
+                    for unfollower in diff_data["unfollowers"]
                 ],
             },
             f,
@@ -399,8 +421,21 @@ def generate_scan_diff(
             print(
                 f"{len(diff_data['new_followers'])} new followers found for user {reference_profile_id} in the first scan."
             )
+            target_profile_ids = {
+                follower.pk_id for follower in diff_data["new_followers"]
+            }
+            account_not_accessible_by_profile_id = get_target_profile_deactivated_map(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_ids=target_profile_ids,
+            )
             diff_id = f"{reference_profile_id}_{latest_scan_id}_diff"
-            store_diff_locally(latest_scan_id, diff_data, diff_id)
+            store_diff_locally(
+                latest_scan_id,
+                diff_data,
+                diff_id,
+                account_not_accessible_by_profile_id=account_not_accessible_by_profile_id,
+            )
             store_diff_record(
                 diff_id=diff_id,
                 app_user_id=app_user_id,
@@ -479,8 +514,21 @@ def generate_scan_diff(
         print(
             f"{len(diff_data['unfollowers'])} unfollowers found for user {reference_profile_id}."
         )
+        target_profile_ids = {
+            follower.pk_id for follower in diff_data["new_followers"]
+        } | {unfollower.pk_id for unfollower in diff_data["unfollowers"]}
+        account_not_accessible_by_profile_id = get_target_profile_deactivated_map(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            target_profile_ids=target_profile_ids,
+        )
         diff_id = f"{reference_profile_id}_{latest_scan_id}_diff"
-        store_diff_locally(latest_scan_id, diff_data, diff_id)
+        store_diff_locally(
+            latest_scan_id,
+            diff_data,
+            diff_id,
+            account_not_accessible_by_profile_id=account_not_accessible_by_profile_id,
+        )
         store_diff_record(
             diff_id=diff_id,
             app_user_id=app_user_id,
@@ -700,6 +748,7 @@ def upsert_target_profile(
     is_verified: bool | None = None,
     me_following_account: bool | None = None,
     being_followed_by_account: bool | None = None,
+    is_deactivated: bool | None = None,
     fetch_status: str = "pending",
     metadata_fetched_at: str | None = None,
     relationships_fetched_at: str | None = None,
@@ -723,13 +772,14 @@ def upsert_target_profile(
                 is_verified,
                 me_following_account,
                 being_followed_by_account,
+                is_deactivated,
                 fetch_status,
                 metadata_fetched_at,
                 relationships_fetched_at,
                 last_error,
                 create_date,
                 update_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(app_user_id, reference_profile_id, target_profile_id)
             DO UPDATE SET
                 username = excluded.username,
@@ -740,6 +790,7 @@ def upsert_target_profile(
                 is_verified = excluded.is_verified,
                 me_following_account = excluded.me_following_account,
                 being_followed_by_account = excluded.being_followed_by_account,
+                is_deactivated = excluded.is_deactivated,
                 fetch_status = excluded.fetch_status,
                 metadata_fetched_at = excluded.metadata_fetched_at,
                 relationships_fetched_at = excluded.relationships_fetched_at,
@@ -760,6 +811,7 @@ def upsert_target_profile(
                 int(being_followed_by_account)
                 if being_followed_by_account is not None
                 else None,
+                int(is_deactivated) if is_deactivated is not None else None,
                 fetch_status,
                 metadata_fetched_at,
                 relationships_fetched_at,
@@ -797,10 +849,43 @@ def get_target_profile(
             "is_verified",
             "me_following_account",
             "being_followed_by_account",
+            "is_deactivated",
         ):
             if result.get(key) is not None:
                 result[key] = bool(result[key])
         return result
+
+
+def get_target_profile_deactivated_map(
+    app_user_id: str,
+    reference_profile_id: str,
+    target_profile_ids: set[str],
+) -> dict[str, bool]:
+    if not target_profile_ids:
+        return {}
+
+    placeholders = ",".join("?" for _ in target_profile_ids)
+    query = f"""
+        SELECT target_profile_id, is_deactivated
+        FROM target_profiles
+        WHERE app_user_id = ?
+          AND reference_profile_id = ?
+          AND target_profile_id IN ({placeholders})
+    """
+
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            query,
+            (app_user_id, reference_profile_id, *sorted(target_profile_ids)),
+        )
+        rows = cursor.fetchall()
+
+    result = {target_profile_id: False for target_profile_id in target_profile_ids}
+    for row in rows:
+        result[row["target_profile_id"]] = bool(row["is_deactivated"])
+    return result
 
 
 def create_target_profile_list_cache_entry(
@@ -1070,6 +1155,7 @@ def replace_target_profile_relationships(
             is_verified=cached_profile.get("is_verified"),
             me_following_account=cached_profile.get("me_following_account"),
             being_followed_by_account=cached_profile.get("being_followed_by_account"),
+            is_deactivated=cached_profile.get("is_deactivated"),
             fetch_status="ready",
             metadata_fetched_at=cached_profile.get("metadata_fetched_at"),
             relationships_fetched_at=fetched_at,

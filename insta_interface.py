@@ -486,8 +486,12 @@ def _get_relationship_records_v2(
     target_user_id: str,
     edge_name: str,
     query_hash: str,
+    fetch_at_max: int | None = None,
 ) -> list[FollowerUserRecord]:
     records: list[FollowerUserRecord] = []
+    normalized_fetch_at_max: int | None = None
+    if fetch_at_max is not None:
+        normalized_fetch_at_max = max(1, int(fetch_at_max))
 
     with requests.Session() as session:
         session.headers.update(_headers(profile))
@@ -497,11 +501,22 @@ def _get_relationship_records_v2(
         has_next = True
 
         while has_next:
+            if (
+                normalized_fetch_at_max is not None
+                and len(records) >= normalized_fetch_at_max
+            ):
+                break
+
+            page_size = 50
+            if normalized_fetch_at_max is not None:
+                remaining = normalized_fetch_at_max - len(records)
+                page_size = max(1, min(50, remaining))
+
             variables = {
                 "id": target_user_id,
                 "include_reel": False,
                 "fetch_mutual": False,
-                "first": 50,
+                "first": page_size,
                 "after": _after,
             }
             _url = f"{url}?query_hash={query_hash}&variables={quote(json.dumps(variables))}"
@@ -535,6 +550,12 @@ def _get_relationship_records_v2(
             has_next = edge.get("page_info", {}).get("has_next_page", False)
             print(f"Fetched batch of {edge_name}, count: {len(edge['edges'])}")
 
+            if (
+                normalized_fetch_at_max is not None
+                and len(records) >= normalized_fetch_at_max
+            ):
+                break
+
     return records
 
 
@@ -542,6 +563,7 @@ def get_current_followers_v2(
     profile: InstagramProfile,
     store_data: bool = True,
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+    fetch_at_max: int | None = None,
 ):
     """V2 of get_current_followers with different approach"""
     follower_user_data_list = _get_relationship_records_v2(
@@ -549,6 +571,7 @@ def get_current_followers_v2(
         target_user_id=profile.user_id,
         edge_name="edge_followed_by",
         query_hash="c76146de99bb02f6415203be841dd25a",
+        fetch_at_max=fetch_at_max,
     )
 
     if store_data and _store_fn:
@@ -561,6 +584,7 @@ def get_current_following_v2(
     profile: InstagramProfile,
     store_data: bool = True,
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+    fetch_at_max: int | None = None,
 ):
     """V2 of get_current_following with different approach"""
     following_user_data_list = _get_relationship_records_v2(
@@ -568,6 +592,7 @@ def get_current_following_v2(
         target_user_id=profile.user_id,
         edge_name="edge_follow",
         query_hash="d04b0a864b4b54837c0d870b0e77e076",
+        fetch_at_max=fetch_at_max,
     )
 
     if store_data and _store_fn:
@@ -581,12 +606,14 @@ def get_target_followers_v2(
     target_user_id: str,
     store_data: bool = False,
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+    fetch_at_max: int | None = None,
 ) -> list[FollowerUserRecord]:
     followers = _get_relationship_records_v2(
         profile=profile,
         target_user_id=target_user_id,
         edge_name="edge_followed_by",
         query_hash="c76146de99bb02f6415203be841dd25a",
+        fetch_at_max=fetch_at_max,
     )
     if store_data and _store_fn:
         _store_fn(followers)
@@ -598,12 +625,14 @@ def get_target_following_v2(
     target_user_id: str,
     store_data: bool = False,
     _store_fn: Callable[[list[FollowerUserRecord]], None] | None = None,
+    fetch_at_max: int | None = None,
 ) -> list[FollowerUserRecord]:
     following = _get_relationship_records_v2(
         profile=profile,
         target_user_id=target_user_id,
         edge_name="edge_follow",
         query_hash="d04b0a864b4b54837c0d870b0e77e076",
+        fetch_at_max=fetch_at_max,
     )
     if store_data and _store_fn:
         _store_fn(following)
