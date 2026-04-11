@@ -7,6 +7,7 @@ from meerkit.scripts.exceptions import (
     ScanScriptError,
     ScriptDataParseError,
 )
+from meerkit.services import diff_accessibility
 from meerkit.services.db_service import generate_scan_diff, store_scan_info
 from meerkit.services.instagram_gateway import instagram_gateway
 
@@ -171,6 +172,13 @@ def run_scan_for_api(
 
     # Compute and persist diff
     diff_id = generate_scan_diff(latest_scan_id, reference_profile_id, app_user_id)
+    if isinstance(diff_id, str):
+        diff_accessibility.enrich_diff_accessibility_for_scan(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            profile=profile,
+            diff_id=diff_id,
+        )
 
     from meerkit.services import account_handler
 

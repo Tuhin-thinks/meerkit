@@ -44,12 +44,33 @@ def _enrich_diff_with_alt_followback(
             if not target_profile_id:
                 enriched_rows.append(dict(row))
                 continue
+            target_profile = (
+                _db_service.get_target_profile(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                )
+                or {}
+            )
+            latest_task = (
+                _db_service.get_latest_prediction_task(
+                    app_user_id=app_user_id,
+                    reference_profile_id=reference_profile_id,
+                    target_profile_id=target_profile_id,
+                )
+                or {}
+            )
+            account_not_accessible = bool(row.get("account_not_accessible", False))
+            account_not_accessible = account_not_accessible or bool(
+                target_profile.get("last_error")
+            )
+            account_not_accessible = account_not_accessible or (
+                latest_task.get("status") == "error" and bool(latest_task.get("error"))
+            )
             enriched_rows.append(
                 {
                     **row,
-                    "account_not_accessible": bool(
-                        row.get("account_not_accessible", False)
-                    ),
+                    "account_not_accessible": account_not_accessible,
                     "alt_followback_assessment": account_handler.get_alt_followback_assessment_for_target(
                         app_user_id=app_user_id,
                         reference_profile_id=reference_profile_id,

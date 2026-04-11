@@ -583,6 +583,21 @@ def get_latest_diff_id(reference_profile_id: str) -> str | None:
 
 def get_diff_by_id(diff_id: str) -> dict | None:
     """Return the diff data for a given diff ID, or None if not found."""
+    diff_file_path = get_diff_file_path(diff_id)
+    if not diff_file_path:
+        return None
+    try:
+        with open(diff_file_path) as f:
+            import json
+
+            return json.load(f)
+    except FileNotFoundError:
+        print(f"[DB Service] Diff file not found at path: {diff_file_path}")
+        return None
+
+
+def get_diff_file_path(diff_id: str) -> str | None:
+    """Return the stored diff file path for a given diff ID, if present."""
     db = get_worker_db()
     with db as conn:
         cursor = conn.cursor()
@@ -593,15 +608,7 @@ def get_diff_by_id(diff_id: str) -> dict | None:
         result = cursor.fetchone()
         if not result:
             return None
-        diff_file_path = result["diff_file_path"]
-        try:
-            with open(diff_file_path) as f:
-                import json
-
-                return json.load(f)
-        except FileNotFoundError:
-            print(f"[DB Service] Diff file not found at path: {diff_file_path}")
-            return None
+        return str(result["diff_file_path"])
 
 
 def get_scan_history(
