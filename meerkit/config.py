@@ -31,7 +31,7 @@ def IMAGE_DOWNLOAD_DELAY_SECONDS() -> int:
 # Maximum worker threads per queue consumer.
 MAX_IMAGE_DOWNLOAD_WORKERS = 10
 MAX_PREDICTION_REFRESH_WORKERS = 3
-MAX_AUTOMATION_WORKERS = 3
+MAX_AUTOMATION_WORKERS = 5
 MAX_USER_DETAILS_FETCH_THREADS = 8
 
 # Legacy cache compatibility
@@ -56,15 +56,15 @@ INSTA_FOLLOWERS_LOOP_DELAY_SECONDS = float(
 # Automation
 # Base wait time (seconds) inserted between executing two consecutive automation items.
 AUTOMATION_INTER_ACTION_DELAY_SECONDS = float(
-    os.environ.get("AUTOMATION_INTER_ACTION_DELAY_SECONDS", "3.0")
+    os.environ.get("AUTOMATION_INTER_ACTION_DELAY_SECONDS", "1.0")
 )
 # Max extra random seconds added on top of the base inter-action delay to prevent detectable patterns.
 AUTOMATION_INTER_ACTION_JITTER_SECONDS = float(
-    os.environ.get("AUTOMATION_INTER_ACTION_JITTER_SECONDS", "4.0")
+    os.environ.get("AUTOMATION_INTER_ACTION_JITTER_SECONDS", "0.5")
 )
 # Minutes without a heartbeat before a running automation action is considered stale and marked as error.
 AUTOMATION_STALE_TIMEOUT_MINUTES = int(
-    os.environ.get("AUTOMATION_STALE_TIMEOUT_MINUTES", "10")
+    os.environ.get("AUTOMATION_STALE_TIMEOUT_MINUTES", "30")
 )
 
 # Predictions
