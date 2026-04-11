@@ -49,6 +49,22 @@ def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp
         "get_current_followers.generate_scan_diff",
         lambda *args: "diff_123",
     )
+    enrichment_calls: list[dict[str, object]] = []
+
+    def capture_enrichment(**kwargs):
+        enrichment_calls.append(kwargs)
+        return {
+            "seeded_profiles": 0,
+            "reactivated_profile_ids": set(),
+            "checked_profile_ids": set(),
+            "updated_rows": 0,
+            "diff_path": None,
+        }
+
+    monkeypatch.setattr(
+        "get_current_followers.diff_accessibility.enrich_diff_accessibility_for_scan",
+        capture_enrichment,
+    )
     monkeypatch.setattr(
         "meerkit.services.account_handler.reconcile_followback_predictions",
         lambda **kwargs: 0,
@@ -63,5 +79,8 @@ def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp
     )
 
     assert refresh_calls == [("followers", True), ("following", True)]
+    assert len(enrichment_calls) == 1
+    assert enrichment_calls[0]["diff_id"] == "diff_123"
+    assert enrichment_calls[0]["reference_profile_id"] == "ig_1"
     assert result["diff_id"] == "diff_123"
     assert result["follower_count"] == len(follower_records)
