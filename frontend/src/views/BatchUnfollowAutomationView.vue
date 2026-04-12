@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink } from "vue-router";
+import ProfilePicture from "../components/ProfilePicture.vue";
+import AutomationProfilePreviewCard from "../components/automation/AutomationProfilePreviewCard.vue";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -17,6 +19,7 @@ import {
 import type {
     AutomationAction,
     AutomationActionResult,
+    AutomationPreviewItem,
     FollowingUser,
 } from "../types/automation";
 
@@ -205,6 +208,17 @@ const prepareBlockReason = computed(() => {
     }
     return `Another batch unfollow action is already ${activeActionLock.value.status}. Action: ${activeActionLock.value.action_id}`;
 });
+
+const stagedPreviewItems = computed<AutomationPreviewItem[]>(() => {
+    if (stagedResult.value?.selected_items?.length) {
+        return stagedResult.value.selected_items;
+    }
+    return currentAction.value?.items_by_status?.pending ?? [];
+});
+
+const visibleStagedPreviewItems = computed(() =>
+    stagedPreviewItems.value.slice(0, 10),
+);
 
 const isAllFilteredSelected = computed(() => {
     if (!filteredFollowingList.value.length) return false;
@@ -850,7 +864,13 @@ const protectedPlaceholder = [
                                         type="checkbox"
                                         :value="user.user_id"
                                         v-model="selectedUserIds"
-                                        class="h-4 w-4 rounded accent-rose-400 flex-shrink-0"
+                                        class="h-4 w-4 rounded accent-rose-400 flex-shrink-0 mt-1"
+                                    />
+                                    <ProfilePicture
+                                        :pk-id="user.user_id"
+                                        :profile-id="props.profileId"
+                                        :alt="`${user.username} profile`"
+                                        class="h-12 w-12"
                                     />
                                     <div class="min-w-0 flex-1">
                                         <div
@@ -1096,28 +1116,22 @@ const protectedPlaceholder = [
                             {{ altProtectedExcludedCount }} excluded because linked alt account follows you
                         </p>
                         <div
-                            v-if="stagedResult.selected_items.length"
-                            class="mt-3 max-h-32 overflow-y-auto space-y-1"
+                            v-if="visibleStagedPreviewItems.length"
+                            class="mt-3 grid gap-2"
                         >
-                            <p
-                                v-for="item in stagedResult.selected_items.slice(
-                                    0,
-                                    10,
-                                )"
+                            <AutomationProfilePreviewCard
+                                v-for="item in visibleStagedPreviewItems"
                                 :key="item.raw_input"
-                                class="text-xs text-slate-300"
-                            >
-                                @{{
-                                    item.display_username ?? item.raw_input
-                                }}
-                            </p>
+                                :item="item"
+                                :profile-id="props.profileId"
+                            />
                             <p
-                                v-if="stagedResult.selected_items.length > 10"
+                                v-if="stagedPreviewItems.length > 10"
                                 class="text-xs text-slate-500"
                             >
                                 …and
                                 {{
-                                    stagedResult.selected_items.length - 10
+                                    stagedPreviewItems.length - 10
                                 }}
                                 more
                             </p>
@@ -1141,6 +1155,23 @@ const protectedPlaceholder = [
                             Click <strong>Confirm &amp; Execute</strong> to continue,
                             or <strong>Cancel Staged Batch</strong> to unlock.
                         </p>
+                        <div
+                            v-if="visibleStagedPreviewItems.length"
+                            class="mt-3 grid gap-2"
+                        >
+                            <AutomationProfilePreviewCard
+                                v-for="(item, idx) in visibleStagedPreviewItems"
+                                :key="`recovered-${idx}`"
+                                :item="item"
+                                :profile-id="props.profileId"
+                            />
+                            <p
+                                v-if="stagedPreviewItems.length > 10"
+                                class="text-xs text-slate-500"
+                            >
+                                …and {{ stagedPreviewItems.length - 10 }} more
+                            </p>
+                        </div>
                     </template>
 
                     <!-- Confirming -->

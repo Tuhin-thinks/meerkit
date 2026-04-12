@@ -945,6 +945,65 @@ def get_target_profile(
         return result
 
 
+def get_target_profile_by_username(
+    app_user_id: str, reference_profile_id: str, username: str
+) -> dict | None:
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        return None
+
+    db = get_worker_db()
+    with db as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT *
+            FROM target_profiles
+            WHERE app_user_id = ?
+              AND reference_profile_id = ?
+              AND LOWER(username) = LOWER(?)
+            ORDER BY update_date DESC
+            LIMIT 1
+            """,
+            (app_user_id, reference_profile_id, normalized_username),
+        )
+        row = cursor.fetchone()
+
+    return (
+        get_target_profile(app_user_id, reference_profile_id, row["target_profile_id"])
+        if row
+        else None
+    )
+
+
+def get_latest_profile_pic_metadata(
+    app_user_id: str, reference_profile_id: str, pk_id: str
+) -> dict | None:
+    """Return the latest stored profile image metadata for one profile id."""
+    db_handler = get_worker_db()
+    with db_handler as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT
+                scanned_data.profile_pic_id,
+                scanned_data.profile_pic_url,
+                scanned_data.username,
+                scanned_data.full_name
+            FROM scanned_data
+            JOIN scan_history ON scan_history.scan_id = scanned_data.scan_id
+            WHERE scanned_data.app_user_id = ?
+                AND scanned_data.reference_profile_id = ?
+                AND scanned_data.profile_id = ?
+            ORDER BY scan_history.scan_time DESC
+            LIMIT 1
+            """,
+            (app_user_id, reference_profile_id, pk_id),
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
 def get_target_profile_deactivated_map(
     app_user_id: str,
     reference_profile_id: str,
@@ -2473,11 +2532,12 @@ def list_automation_action_items(
                 "SELECT * FROM automation_action_items WHERE action_id = ? ORDER BY create_date ASC",
                 (action_id,),
             )
-        return [
+        items = [
             item
             for row in cursor.fetchall()
             if (item := _normalize_action_item_row(row)) is not None
         ]
+    return items
 
 
 def update_automation_action_item(item_id: str, **fields: object) -> None:

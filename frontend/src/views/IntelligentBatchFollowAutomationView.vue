@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink } from "vue-router";
+import AutomationProfilePreviewCard from "../components/automation/AutomationProfilePreviewCard.vue";
 import {
     cancelAutomationAction,
     confirmAutomationAction,
@@ -13,7 +14,11 @@ import {
     registerAutomationJob,
     updateAutomationJob,
 } from "../services/automationJobRegistry";
-import type { AutomationAction, AutomationActionResult } from "../types/automation";
+import type {
+    AutomationAction,
+    AutomationActionResult,
+    AutomationPreviewItem,
+} from "../types/automation";
 
 const props = defineProps<{
     profileId: string;
@@ -111,6 +116,17 @@ const runningProgress = computed(() => {
             100,
     );
 });
+
+const stagedPreviewItems = computed<AutomationPreviewItem[]>(() => {
+    if (stagedResult.value?.selected_items?.length) {
+        return stagedResult.value.selected_items;
+    }
+    return currentAction.value?.items_by_status?.pending ?? [];
+});
+
+const visibleStagedPreviewItems = computed(() =>
+    stagedPreviewItems.value.slice(0, 10),
+);
 
 async function prepare() {
     if (!hasCandidates.value || hasConflictingAction.value) return;
@@ -543,30 +559,59 @@ function goBack() {
                             do-not-follow rules
                         </p>
                         <div
-                            v-if="stagedResult.selected_items.length"
-                            class="mt-3 max-h-32 overflow-y-auto space-y-1"
+                            v-if="visibleStagedPreviewItems.length"
+                            class="mt-3 grid gap-2"
                         >
-                            <p
-                                v-for="item in stagedResult.selected_items.slice(
-                                    0,
-                                    10,
-                                )"
+                            <AutomationProfilePreviewCard
+                                v-for="item in visibleStagedPreviewItems"
                                 :key="item.raw_input"
-                                class="text-xs text-slate-300"
-                            >
-                                @{{
-                                    item.display_username ?? item.raw_input
-                                }}
-                            </p>
+                                :item="item"
+                                :profile-id="props.profileId"
+                            />
                             <p
-                                v-if="stagedResult.selected_items.length > 10"
+                                v-if="stagedPreviewItems.length > 10"
                                 class="text-xs text-slate-500"
                             >
                                 …and
                                 {{
-                                    stagedResult.selected_items.length - 10
+                                    stagedPreviewItems.length - 10
                                 }}
                                 more
+                            </p>
+                        </div>
+                    </template>
+
+                    <template v-else-if="phase === 'staged' && currentAction">
+                        <p
+                            class="text-xs uppercase tracking-wide text-emerald-300/85"
+                        >
+                            ✓ Ready to Execute
+                        </p>
+                        <p class="text-sm text-slate-100 mt-2">
+                            A previously prepared batch is staged on the server.
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Action ID: {{ currentAction.action_id }}
+                        </p>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Click <strong>Confirm &amp; Execute</strong> to continue,
+                            or <strong>Cancel Staged Batch</strong> to unlock.
+                        </p>
+                        <div
+                            v-if="visibleStagedPreviewItems.length"
+                            class="mt-3 grid gap-2"
+                        >
+                            <AutomationProfilePreviewCard
+                                v-for="(item, idx) in visibleStagedPreviewItems"
+                                :key="`recovered-${idx}`"
+                                :item="item"
+                                :profile-id="props.profileId"
+                            />
+                            <p
+                                v-if="stagedPreviewItems.length > 10"
+                                class="text-xs text-slate-500"
+                            >
+                                …and {{ stagedPreviewItems.length - 10 }} more
                             </p>
                         </div>
                     </template>

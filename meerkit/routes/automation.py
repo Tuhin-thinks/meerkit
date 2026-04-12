@@ -46,6 +46,7 @@ from meerkit.services.automation_service import (
     remove_safelist_entry,
 )
 from meerkit.services.instagram_gateway import instagram_gateway
+from meerkit.services.downloader import enqueue_image_download
 
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
 logger = logging.getLogger(__name__)
@@ -276,6 +277,20 @@ def get_following_users():
         return _error_response(exc)
 
     follower_ids = {record.pk_id for record in follower_records}
+    prefetch_metrics = _enqueue_following_profile_image_downloads(
+        app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
+        following_records=following_records,
+    )
+    logger.info(
+        "Automation image prefetch queued=%s eligible=%s skipped_missing_pk=%s skipped_missing_url=%s app_user_id=%s profile_id=%s",
+        prefetch_metrics["enqueued_count"],
+        prefetch_metrics["eligible_count"],
+        prefetch_metrics["skipped_missing_pk"],
+        prefetch_metrics["skipped_missing_url"],
+        app_user_id,
+        reference_profile_id,
+    )
     user_count_map = _load_following_user_counts_bulk(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -319,6 +334,38 @@ def get_following_users():
             "following_total": len(following_records),
         }
     )
+
+
+def _enqueue_following_profile_image_downloads(
+    *,
+    app_user_id: str,
+    reference_profile_id: str,
+    following_records: list,
+) -> dict[str, int]:
+    metrics = {
+        "eligible_count": 0,
+        "enqueued_count": 0,
+        "skipped_missing_pk": 0,
+        "skipped_missing_url": 0,
+    }
+    for record in following_records:
+        metrics["eligible_count"] += 1
+        pk_id = str(getattr(record, "pk_id", "") or "").strip()
+        profile_pic_url = str(getattr(record, "profile_pic_url", "") or "").strip()
+        if not pk_id:
+            metrics["skipped_missing_pk"] += 1
+            continue
+        if not profile_pic_url:
+            metrics["skipped_missing_url"] += 1
+            continue
+        enqueue_image_download(
+            app_user_id,
+            reference_profile_id,
+            pk_id,
+            profile_pic_url,
+        )
+        metrics["enqueued_count"] += 1
+    return metrics
 
 
 def _load_following_user_counts(
@@ -619,6 +666,8 @@ def get_action(action_id: str):
             {
                 "item_id": item["item_id"],
                 "display_username": item.get("display_username"),
+                "normalized_username": item.get("normalized_username"),
+                "normalized_user_id": item.get("normalized_user_id"),
                 "raw_input": item.get("raw_input"),
                 "status": s,
                 "exclusion_reason": item.get("exclusion_reason"),

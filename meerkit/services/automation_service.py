@@ -46,6 +46,7 @@ def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+
 # ── Normalization ──────────────────────────────────────────────────────────────
 
 
@@ -620,8 +621,7 @@ def prepare_batch_follow(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "pending",
             "exclusion_reason": None,
         }
@@ -635,8 +635,7 @@ def prepare_batch_follow(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "skipped",
             "exclusion_reason": e.get("exclusion_reason"),
         }
@@ -659,8 +658,9 @@ def prepare_batch_follow(
         "selected_items": [
             {
                 "raw_input": e["raw_input"],
-                "display_username": e.get("normalized_username")
-                or e.get("normalized_user_id"),
+                "normalized_username": e.get("normalized_username"),
+                "normalized_user_id": e.get("normalized_user_id"),
+                "display_username": e.get("normalized_username") or e.get("normalized_user_id"),
             }
             for e in selected
         ],
@@ -847,8 +847,7 @@ def prepare_batch_unfollow(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "pending",
             "exclusion_reason": None,
         }
@@ -862,8 +861,7 @@ def prepare_batch_unfollow(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "skipped",
             "exclusion_reason": e.get("exclusion_reason"),
         }
@@ -886,8 +884,9 @@ def prepare_batch_unfollow(
         "selected_items": [
             {
                 "raw_input": e["raw_input"],
-                "display_username": e.get("normalized_username")
-                or e.get("normalized_user_id"),
+                "normalized_username": e.get("normalized_username"),
+                "normalized_user_id": e.get("normalized_user_id"),
+                "display_username": e.get("normalized_username") or e.get("normalized_user_id"),
             }
             for e in selected
         ],
@@ -1028,8 +1027,7 @@ def prepare_left_right_compare(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "pending",
             "exclusion_reason": None,
         }
@@ -1043,8 +1041,7 @@ def prepare_left_right_compare(
             "raw_input": e["raw_input"],
             "normalized_username": e["normalized_username"],
             "normalized_user_id": e["normalized_user_id"],
-            "display_username": e.get("normalized_username")
-            or e.get("normalized_user_id"),
+            "display_username": e.get("display_username"),
             "status": "skipped",
             "exclusion_reason": e.get("exclusion_reason"),
         }
@@ -1069,8 +1066,9 @@ def prepare_left_right_compare(
         "selected_items": [
             {
                 "raw_input": e["raw_input"],
-                "display_username": e.get("normalized_username")
-                or e.get("normalized_user_id"),
+                "normalized_username": e.get("normalized_username"),
+                "normalized_user_id": e.get("normalized_user_id"),
+                "display_username": e.get("normalized_username") or e.get("normalized_user_id"),
             }
             for e in left_selected
         ],

@@ -60,10 +60,16 @@ export type AutomationStatus =
   | 'error'
   | 'cancelled'
 
-export interface AutomationActionItem {
-  item_id: string
-  display_username: string | null
+export interface AutomationPreviewItem {
   raw_input: string
+  normalized_username: string | null
+  normalized_user_id: string | null
+  display_username: string | null
+  status?: string
+}
+
+export interface AutomationActionItem extends AutomationPreviewItem {
+  item_id: string
   status: string
   exclusion_reason:
     | 'invalid_input'
@@ -159,7 +165,7 @@ export interface AutomationActionResult {
   excluded_count: number
   right_selected_count?: number
   right_excluded_count?: number
-  selected_items: { raw_input: string; display_username: string | null }[]
+  selected_items: AutomationPreviewItem[]
   excluded_items: { raw_input: string; exclusion_reason: string | null }[]
   right_excluded_items?: { raw_input: string; exclusion_reason: string | null }[]
 }
