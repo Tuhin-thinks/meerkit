@@ -218,4 +218,5 @@ data/
 profile_query/
 followers_data*
 tests/outputs/*
+logs/
 tests/*.env

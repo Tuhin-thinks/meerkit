@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from meerkit.scripts.exceptions import (
 from meerkit.services import diff_accessibility
 from meerkit.services.db_service import generate_scan_diff, store_scan_info
 from meerkit.services.instagram_gateway import instagram_gateway
+
+logger = logging.getLogger(__name__)
 
 
 def compare_followers(
@@ -90,7 +93,15 @@ def add_to_downloader_queue(
     """Add a follower's profile image URL to the downloader queue for async caching."""
     from meerkit.services.downloader import enqueue_image_download
 
-    print(f"Enqueuing image download for {len(profile)} followers...")
+    logger.info(
+        "scan_followers_enqueued_for_image_download",
+        extra={
+            "event": "scan_followers_enqueued_for_image_download",
+            "app_user_id": app_user_id,
+            "instagram_user_id": instagram_user_id,
+            "metrics": {"followers_enqueued": len(profile)},
+        },
+    )
     for follower in profile:
         enqueue_image_download(
             app_user_id,

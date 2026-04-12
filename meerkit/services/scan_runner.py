@@ -1,3 +1,4 @@
+import logging
 import threading
 import traceback
 from datetime import datetime
@@ -12,6 +13,7 @@ from meerkit.services import persistence
 _locks: dict[str, threading.Lock] = {}
 _states: dict[str, dict] = {}
 _threads: dict[str, threading.Thread] = {}
+logger = logging.getLogger(__name__)
 
 
 def _scope_key(app_user_id: str, profile_id: str) -> str:
@@ -132,7 +134,15 @@ def start_scan(
                 )
         except Exception as exc:
             _detailed_error = traceback.format_exc()
-            print(f"Scan worker error for {key}: {_detailed_error}")
+            logger.exception(
+                "scan_worker_failed",
+                extra={
+                    "event": "scan_worker_failed",
+                    "scan_scope_key": key,
+                    "error": str(exc),
+                    "traceback": _detailed_error,
+                },
+            )
             if state.get("status") != "cancelled":
                 state.update({"status": "error", "error": str(exc)})
         finally:

@@ -7,9 +7,11 @@ automation_action_items DB state instead of transient queue-only payloads.
 
 import logging
 import threading
+from time import perf_counter
 
 from meerkit.config import MAX_AUTOMATION_WORKERS
 from meerkit.extensions import automation_action_queue
+from meerkit.logging_context import bind_context, clear_context
 from meerkit.services import automation_runner, db_service
 from meerkit.services.automation_service import (
     execute_follow_item,
@@ -49,7 +51,14 @@ def recover_queued_actions(app_user_id: str) -> int:
         )
         count += 1
     if count:
-        print(f"[Automation worker] recovered {count} action(s) for user {app_user_id}")
+        logger.info(
+            "automation_actions_recovered",
+            extra={
+                "event": "automation_actions_recovered",
+                "metrics": {"recovered_actions": count},
+                "app_user_id": app_user_id,
+            },
+        )
     return count
 
 
@@ -59,8 +68,15 @@ def start_automation_worker() -> None:
     with _worker_lock:
         _worker_threads = [t for t in _worker_threads if t.is_alive()]
         if len(_worker_threads) >= MAX_AUTOMATION_WORKERS:
-            print(
-                f"[Automation worker] already running ({len(_worker_threads)}/{MAX_AUTOMATION_WORKERS})."
+            logger.info(
+                "automation_worker_already_running",
+                extra={
+                    "event": "automation_worker_already_running",
+                    "metrics": {
+                        "active_workers": len(_worker_threads),
+                        "max_workers": MAX_AUTOMATION_WORKERS,
+                    },
+                },
             )
             return
 
@@ -78,13 +94,25 @@ def start_automation_worker() -> None:
             is_recovery = item.get("is_recovery", False)
 
             try:
+                started_at = perf_counter()
+                bind_context(
+                    worker_type="automation",
+                    action_id=str(action_id),
+                    app_user_id=str(app_user_id),
+                    action_type=str(action_type),
+                    is_recovery=bool(is_recovery),
+                )
                 current = automation_runner.get_action_status(action_id)
                 if not current:
-                    print(f"[Automation worker] action {action_id} not found, skipping")
+                    logger.warning(
+                        "automation_action_not_found",
+                        extra={"event": "automation_action_not_found"},
+                    )
                     continue
                 if current.get("status") == "cancelled":
-                    print(
-                        f"[Automation worker] action {action_id} is cancelled, skipping"
+                    logger.info(
+                        "automation_action_cancelled_before_execution",
+                        extra={"event": "automation_action_cancelled_before_execution"},
                     )
                     continue
 
@@ -110,14 +138,27 @@ def start_automation_worker() -> None:
                     app_user_id=app_user_id,
                     instagram_user=instagram_user,
                 )
+                logger.info(
+                    "automation_action_processed",
+                    extra={
+                        "event": "automation_action_processed",
+                        "metrics": {
+                            "duration_ms": int((perf_counter() - started_at) * 1000),
+                        },
+                    },
+                )
 
             except Exception as exc:
                 logger.exception("Automation worker failed action execution")
                 automation_runner.mark_action_error(action_id, str(exc))
             finally:
+                clear_context()
                 automation_action_queue.task_done()
 
-        print("[Automation worker] received shutdown signal, exiting...")
+        logger.info(
+            "automation_worker_shutdown",
+            extra={"event": "automation_worker_shutdown"},
+        )
         close_worker_db()
 
     workers_to_start = MAX_AUTOMATION_WORKERS - len(_worker_threads)
@@ -131,8 +172,15 @@ def start_automation_worker() -> None:
         thread.start()
         _worker_threads.append(thread)
 
-    print(
-        f"[Automation worker] started {workers_to_start} worker(s). Total: {len(_worker_threads)}"
+    logger.info(
+        "automation_worker_started",
+        extra={
+            "event": "automation_worker_started",
+            "metrics": {
+                "workers_started": workers_to_start,
+                "active_workers": len(_worker_threads),
+            },
+        },
     )
 
 
@@ -165,8 +213,12 @@ def _execute_action(
     for idx, item in enumerate(pending_items):
         current = automation_runner.get_action_status(action_id)
         if current and current.get("status") == "cancelled":
-            print(
-                f"[Automation worker] action {action_id} cancelled mid-run, stopping at item {idx}"
+            logger.info(
+                "automation_action_cancelled_mid_run",
+                extra={
+                    "event": "automation_action_cancelled_mid_run",
+                    "metrics": {"processed_items": idx},
+                },
             )
             return
 

@@ -101,6 +101,37 @@ Optional deprecation flag for cache migration:
 export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
 ```
 
+### Structured Logging Configuration
+
+Meerkit now supports pluggable JSON structured logging with rotating log files.
+By default logs are written to `logs/app.jsonl` and rotated automatically.
+
+Set these environment variables to configure behavior:
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOGGING_ENABLED` | `true` | Enable or disable logging bootstrap |
+| `LOG_LEVEL` | `INFO` | Root log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `LOG_FILE_PATH` | `logs/app.jsonl` | Output JSONL log file path |
+| `LOG_ROTATION_MAX_BYTES` | `10485760` | Rotate after this many bytes (10 MB) |
+| `LOG_ROTATION_BACKUP_COUNT` | `5` | Number of rotated backup files to keep |
+| `LOG_REDACT_SENSITIVE_FIELDS` | `true` | Redact sensitive fields like cookies/session/csrf |
+| `LOG_SUPPRESSED_LOGGERS` | `watchdog.observers.inotify_buffer` | Comma-separated logger names to suppress completely |
+
+Example:
+
+```bash
+export LOG_LEVEL=DEBUG
+export LOG_FILE_PATH=logs/app.jsonl
+export LOG_ROTATION_MAX_BYTES=10485760
+export LOG_ROTATION_BACKUP_COUNT=5
+export LOG_REDACT_SENSITIVE_FIELDS=true
+export LOG_SUPPRESSED_LOGGERS=watchdog.observers.inotify_buffer
+```
+
+To plug in external sinks (such as Elasticsearch) later, register a custom handler
+with `meerkit.logging_config.register_handler(...)` before app startup.
+
 ---
 
 ## 📊 Product Preview

@@ -1,6 +1,6 @@
 import csv
 import json
-import pprint
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -22,6 +22,8 @@ from meerkit.config import (
     INSTA_FOLLOWERS_FETCH_PAGE_SIZE,
     INSTA_FOLLOWERS_LOOP_DELAY_SECONDS,
 )
+
+logger = logging.getLogger(__name__)
 
 url = "https://www.instagram.com/graphql/query"
 _topsearch_url = "https://www.instagram.com/web/search/topsearch/"
@@ -65,6 +67,29 @@ def _cookies(profile: InstagramProfile) -> dict[str, str]:
 
 profile_query_data_path = Path("profile_query")
 profile_query_data_path.mkdir(exist_ok=True)
+
+
+def _safe_response_payload(response: requests.Response) -> dict | str:
+    try:
+        return response.json()
+    except ValueError:
+        return response.text
+
+
+def _log_http_response(
+    event: str,
+    response: requests.Response,
+    **fields: object,
+) -> None:
+    logger.info(
+        "instagram_http_response",
+        extra={
+            "event": event,
+            "metrics": {"status_code": int(response.status_code)},
+            "response_payload": _safe_response_payload(response),
+            **fields,
+        },
+    )
 
 
 def load_non_followers_csv():
@@ -167,7 +192,14 @@ def unfollow_user(
     retry_count: int = INSTA_ACTION_RETRY_COUNT,
 ):
     if retry_count < 3:
-        print(f"Retrying unfollow for {username}, attempts left: {retry_count}")
+        logger.info(
+            "unfollow_retry",
+            extra={
+                "event": "unfollow_retry",
+                "target_username": username,
+                "metrics": {"retry_count": retry_count},
+            },
+        )
 
     user_id = load_user_pk_from_saved_data(username)
 
@@ -177,7 +209,14 @@ def unfollow_user(
             username=username,
         )
 
-    print(f"{user_id=}")
+    logger.info(
+        "unfollow_target_resolved",
+        extra={
+            "event": "unfollow_target_resolved",
+            "target_user_id": user_id,
+            "target_username": username,
+        },
+    )
 
     variables = {
         "target_user_id": user_id,
@@ -196,8 +235,12 @@ def unfollow_user(
         cookies=_cookies(profile),
         data=data,
     )
-    print(response.status_code)
-    print(response.json())
+    _log_http_response(
+        "unfollow_user_response",
+        response,
+        target_username=username,
+        target_user_id=user_id,
+    )
 
     if response.status_code == 200:
         # NOTE: Append to file for safe-keeping is not used in this project.
@@ -206,7 +249,15 @@ def unfollow_user(
         # )
         return 1
     else:
-        print(f"Failed to unfollow {username}. Status code: {response.status_code}")
+        logger.warning(
+            "unfollow_failed",
+            extra={
+                "event": "unfollow_failed",
+                "target_username": username,
+                "target_user_id": user_id,
+                "metrics": {"status_code": int(response.status_code)},
+            },
+        )
         return -1
 
 
@@ -217,9 +268,13 @@ def follow_user(
 ) -> int:
     """Follow an Instagram user by profile link using GraphQL mutation."""
     if retry_count < 3:
-        print(
-            "Retrying follow for "
-            f"{instagram_profile_link}, attempts left: {retry_count}"
+        logger.info(
+            "follow_retry",
+            extra={
+                "event": "follow_retry",
+                "target_profile_link": instagram_profile_link,
+                "metrics": {"retry_count": retry_count},
+            },
         )
 
     username = _extract_username_from_profile_link(instagram_profile_link)
@@ -227,9 +282,12 @@ def follow_user(
     user_id = resolve_target_user_pk(username, profile)
 
     if not isinstance(user_id, str) or not user_id:
-        print(
-            "User ID for "
-            f"{instagram_profile_link} not found or invalid. Cannot proceed with following."
+        logger.warning(
+            "follow_target_resolution_failed",
+            extra={
+                "event": "follow_target_resolution_failed",
+                "target_profile_link": instagram_profile_link,
+            },
         )
         return -1
 
@@ -242,7 +300,14 @@ def follow_user_by_id(
     profile: InstagramProfile,
 ) -> int:
     """Follow an Instagram user by their numeric user ID using GraphQL mutation."""
-    print(f"Following user: {target_username} ({target_user_id})")
+    logger.info(
+        "follow_user_by_id_attempt",
+        extra={
+            "event": "follow_user_by_id_attempt",
+            "target_username": target_username,
+            "target_user_id": target_user_id,
+        },
+    )
 
     variables = {
         "target_user_id": target_user_id,
@@ -274,19 +339,24 @@ def follow_user_by_id(
         cookies=_cookies(profile),
         data=payload,
     )
-
-    print(response.status_code)
-    try:
-        print(response.json())
-    except ValueError:
-        print(response.text)
+    _log_http_response(
+        "follow_user_by_id_response",
+        response,
+        target_username=target_username,
+        target_user_id=target_user_id,
+    )
 
     if response.status_code == 200:
         return 1
 
-    print(
-        "Failed to follow "
-        f"{target_username} ({target_user_id}). Status code: {response.status_code}"
+    logger.warning(
+        "follow_user_by_id_failed",
+        extra={
+            "event": "follow_user_by_id_failed",
+            "target_username": target_username,
+            "target_user_id": target_user_id,
+            "metrics": {"status_code": int(response.status_code)},
+        },
     )
     return -1
 
@@ -297,7 +367,14 @@ def unfollow_user_by_id(
     profile: InstagramProfile,
 ) -> int:
     """Unfollow an Instagram user by their numeric user ID using GraphQL mutation."""
-    print(f"Unfollowing user: {target_username} ({target_user_id})")
+    logger.info(
+        "unfollow_user_by_id_attempt",
+        extra={
+            "event": "unfollow_user_by_id_attempt",
+            "target_username": target_username,
+            "target_user_id": target_user_id,
+        },
+    )
 
     variables = {
         "target_user_id": target_user_id,
@@ -316,17 +393,24 @@ def unfollow_user_by_id(
         cookies=_cookies(profile),
         data=data,
     )
-    print(response.status_code)
-    try:
-        print(response.json())
-    except ValueError:
-        print(response.text)
+    _log_http_response(
+        "unfollow_user_by_id_response",
+        response,
+        target_username=target_username,
+        target_user_id=target_user_id,
+    )
 
     if response.status_code == 200:
         return 1
 
-    print(
-        f"Failed to unfollow {target_username} ({target_user_id}). Status code: {response.status_code}"
+    logger.warning(
+        "unfollow_user_by_id_failed",
+        extra={
+            "event": "unfollow_user_by_id_failed",
+            "target_username": target_username,
+            "target_user_id": target_user_id,
+            "metrics": {"status_code": int(response.status_code)},
+        },
     )
     return -1
 
@@ -337,7 +421,13 @@ def _fetch_profile_query_data(
 ) -> dict:
     target_user_id = target_user_id or profile.user_id
 
-    print(f"Fetching profile data for {target_user_id=}")
+    logger.info(
+        "profile_query_fetch_started",
+        extra={
+            "event": "profile_query_fetch_started",
+            "target_user_id": target_user_id,
+        },
+    )
 
     variables = {
         "enable_integrity_filters": True,
@@ -365,7 +455,11 @@ def _fetch_profile_query_data(
             profile_query_data_path / f"profile_query_error_{target_user_id}.html", "w"
         ) as f:
             f.write(response.text)
-        print("Fetching user profile data:", response.status_code)
+        _log_http_response(
+            "profile_query_fetch_failed",
+            response,
+            target_user_id=target_user_id,
+        )
     response.raise_for_status()
 
     return response.json()
@@ -533,8 +627,11 @@ def _get_relationship_records_v2(
             _url = f"{url}?query_hash={query_hash}&variables={quote(json.dumps(variables))}"
             response = session.get(_url)
             if not response.ok:
-                print(
-                    f"Error fetching {edge_name}: {response.status_code} - {response.text}"
+                _log_http_response(
+                    "relationship_fetch_failed",
+                    response,
+                    edge_name=edge_name,
+                    target_user_id=target_user_id,
                 )
                 break
 
@@ -569,7 +666,18 @@ def _get_relationship_records_v2(
 
             _after = edge.get("page_info", {}).get("end_cursor")
             has_next = edge.get("page_info", {}).get("has_next_page", False)
-            print(f"Fetched batch of {edge_name}, count: {len(edge['edges'])}")
+            logger.info(
+                "relationship_batch_fetched",
+                extra={
+                    "event": "relationship_batch_fetched",
+                    "edge_name": edge_name,
+                    "target_user_id": target_user_id,
+                    "metrics": {
+                        "batch_count": len(edge["edges"]),
+                        "total": len(records),
+                    },
+                },
+            )
 
             if (
                 normalized_fetch_at_max is not None
@@ -597,7 +705,13 @@ def get_current_followers_v2(
 
     if store_data and _store_fn:
         _store_fn(follower_user_data_list)
-    print(f"Total followers fetched: {len(follower_user_data_list)}")
+    logger.info(
+        "current_followers_v2_fetched",
+        extra={
+            "event": "current_followers_v2_fetched",
+            "metrics": {"followers_count": len(follower_user_data_list)},
+        },
+    )
     return follower_user_data_list
 
 
@@ -618,7 +732,13 @@ def get_current_following_v2(
 
     if store_data and _store_fn:
         _store_fn(following_user_data_list)
-    print(f"Total following users fetched: {len(following_user_data_list)}")
+    logger.info(
+        "current_following_v2_fetched",
+        extra={
+            "event": "current_following_v2_fetched",
+            "metrics": {"following_count": len(following_user_data_list)},
+        },
+    )
     return following_user_data_list
 
 
@@ -672,7 +792,14 @@ def get_current_followers(
     __user_data = get_user_data(profile)
     followers_count = __user_data["account_followers_count"]
     username = __user_data["username"]
-    print(f"[i] Followers count for {username}: {followers_count}")
+    logger.info(
+        "followers_count_observed",
+        extra={
+            "event": "followers_count_observed",
+            "target_username": username,
+            "metrics": {"followers_count": followers_count},
+        },
+    )
     if not isinstance(followers_count, int):
         raise InvalidFollowerDataError(
             "Invalid followers count in user data",
@@ -709,19 +836,54 @@ def get_current_followers(
                 response = session.get(url, params=_query_params)
                 followers_count_data = response.json()
                 if followers_count_data.get("status") == "fail":
-                    print(f"Error in response: {followers_count_data.get('message')}")
+                    logger.warning(
+                        "followers_v1_response_failed",
+                        extra={
+                            "event": "followers_v1_response_failed",
+                            "target_username": username,
+                            "response_payload": followers_count_data,
+                        },
+                    )
                     break
             except (requests.RequestException, ValueError) as e:
-                print(f"Error fetching followers: {e}")
+                logger.warning(
+                    "followers_v1_fetch_error",
+                    extra={
+                        "event": "followers_v1_fetch_error",
+                        "target_username": username,
+                        "error": str(e),
+                    },
+                )
                 break
             except Exception as e:
-                print(f"Unexpected error: {e}")
+                logger.exception(
+                    "followers_v1_unexpected_error",
+                    extra={
+                        "event": "followers_v1_unexpected_error",
+                        "target_username": username,
+                        "error": str(e),
+                    },
+                )
                 break
 
             _max_id = followers_count_data.get("next_max_id")
-            pprint.pprint(followers_count_data)
+            logger.info(
+                "followers_v1_batch_payload",
+                extra={
+                    "event": "followers_v1_batch_payload",
+                    "target_username": username,
+                    "response_payload": followers_count_data,
+                },
+            )
             users_data = followers_count_data.get("users", [])
-            print("[i] Fetched batch of followers, count:", len(users_data))
+            logger.info(
+                "followers_v1_batch_fetched",
+                extra={
+                    "event": "followers_v1_batch_fetched",
+                    "target_username": username,
+                    "metrics": {"batch_count": len(users_data)},
+                },
+            )
 
             for user_data in users_data:
                 follower_record = FollowerUserRecord(
@@ -742,7 +904,14 @@ def get_current_followers(
 
     if store_data and _store_fn:
         _store_fn(follower_user_data_list)
-    print(f"Total followers fetched: {len(follower_user_data_list)}")
+    logger.info(
+        "current_followers_v1_fetched",
+        extra={
+            "event": "current_followers_v1_fetched",
+            "target_username": username,
+            "metrics": {"followers_count": len(follower_user_data_list)},
+        },
+    )
     return follower_user_data_list
 
 

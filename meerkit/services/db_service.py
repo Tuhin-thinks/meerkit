@@ -93,8 +93,13 @@ def get_worker_db(db_path: Path | None = None) -> SqliteDBHandler:
     if existing:
         existing.close()
     _thread_local.db = SqliteDBHandler(db_path=db_path)
-    print(
-        f"[DB Service] Initialized DB handler for thread {threading.current_thread().name} with db path: {db_path}"
+    logger.info(
+        "db_handler_initialized",
+        extra={
+            "event": "db_handler_initialized",
+            "metrics": {"thread_name": threading.current_thread().name},
+            "db_path": str(db_path),
+        },
     )
     return _thread_local.db
 
@@ -200,8 +205,15 @@ def cache_image_path(to_insert_data: list[tuple[str, str, str]]) -> None:
             bulk_insert_data,
         )
         conn.commit()
-        print(
-            f"[DB Service] Cached {len(to_insert_data)} image paths in DB for thread {threading.current_thread().name}."
+        logger.info(
+            "image_cache_paths_stored",
+            extra={
+                "event": "image_cache_paths_stored",
+                "metrics": {
+                    "cached_records": len(to_insert_data),
+                    "thread_name": threading.current_thread().name,
+                },
+            },
         )
 
 
@@ -220,8 +232,15 @@ def store_scan_info(
             (scan_id, app_user_id, reference_profile_id, _current_time),
         )
         conn.commit()
-        print(
-            f"[DB Service] Stored scan info for app_user_id: {app_user_id} at {_current_time} in DB for thread {threading.current_thread().name}."
+        logger.info(
+            "scan_history_stored",
+            extra={
+                "event": "scan_history_stored",
+                "app_user_id": app_user_id,
+                "reference_profile_id": reference_profile_id,
+                "scan_id": scan_id,
+                "metrics": {"thread_name": threading.current_thread().name},
+            },
         )
 
         # store scanned data
@@ -251,8 +270,18 @@ def store_scan_info(
             scanned_data_bulk_insert,
         )
         conn.commit()
-        print(
-            f"[DB Service] Stored scanned data for {len(profile_list)} followers for app_user_id: {app_user_id} at {_current_time} in DB for thread {threading.current_thread().name}."
+        logger.info(
+            "scan_data_stored",
+            extra={
+                "event": "scan_data_stored",
+                "app_user_id": app_user_id,
+                "reference_profile_id": reference_profile_id,
+                "scan_id": scan_id,
+                "metrics": {
+                    "followers_stored": len(profile_list),
+                    "thread_name": threading.current_thread().name,
+                },
+            },
         )
         return scan_id
 
@@ -330,7 +359,19 @@ def store_diff_locally(
             f,
             indent=4,
         )
-    print(f"[DB Service] Stored diff data locally at {diff_file_path}.")
+    logger.info(
+        "diff_data_file_stored",
+        extra={
+            "event": "diff_data_file_stored",
+            "diff_id": diff_id,
+            "scan_id": scan_id,
+            "diff_file_path": str(diff_file_path),
+            "metrics": {
+                "new_followers": len(diff_data["new_followers"]),
+                "unfollowers": len(diff_data["unfollowers"]),
+            },
+        },
+    )
     return str(diff_file_path)
 
 
@@ -370,8 +411,15 @@ def store_diff_record(
             ),
         )
         conn.commit()
-        print(
-            f"[DB Service] Stored diff record with id {diff_id} for app_user_id: {app_user_id} in DB for thread {threading.current_thread().name}."
+        logger.info(
+            "diff_record_stored",
+            extra={
+                "event": "diff_record_stored",
+                "diff_id": diff_id,
+                "app_user_id": app_user_id,
+                "reference_profile_id": reference_profile_id,
+                "metrics": {"thread_name": threading.current_thread().name},
+            },
         )
         return diff_id
 
@@ -396,8 +444,14 @@ def generate_scan_diff(
 
         result = cursor.fetchone()
         if not result:
-            print(
-                f"[DB Service] No previous scan found for user {reference_profile_id} to compute diff against."
+            logger.info(
+                "scan_diff_previous_scan_missing",
+                extra={
+                    "event": "scan_diff_previous_scan_missing",
+                    "app_user_id": app_user_id,
+                    "reference_profile_id": reference_profile_id,
+                    "latest_scan_id": latest_scan_id,
+                },
             )
             # TODO: Generate diff against an empty dataset and return it, marking all current followers as new followers.
             # This will enable the frontend to show the follower list even on the first scan, instead of showing an empty list until the second scan is done.
@@ -418,8 +472,13 @@ def generate_scan_diff(
                     username=row["username"],
                 )
                 diff_data["new_followers"].append(record)
-            print(
-                f"{len(diff_data['new_followers'])} new followers found for user {reference_profile_id} in the first scan."
+            logger.info(
+                "scan_diff_first_scan_generated",
+                extra={
+                    "event": "scan_diff_first_scan_generated",
+                    "reference_profile_id": reference_profile_id,
+                    "metrics": {"new_followers": len(diff_data["new_followers"])},
+                },
             )
             target_profile_ids = {
                 follower.pk_id for follower in diff_data["new_followers"]
@@ -448,8 +507,14 @@ def generate_scan_diff(
             return diff_data
         # ------------------------ If previously scanned data is available ------------------------------------------------
         previous_scan_id = result["scan_id"]
-        print(
-            f"[DB Service] Found previous scan {previous_scan_id} for user {reference_profile_id} to compute diff against."
+        logger.info(
+            "scan_diff_previous_scan_found",
+            extra={
+                "event": "scan_diff_previous_scan_found",
+                "reference_profile_id": reference_profile_id,
+                "previous_scan_id": previous_scan_id,
+                "latest_scan_id": latest_scan_id,
+            },
         )
         # find new_followers = now - prev
         cursor.execute(
@@ -486,8 +551,13 @@ def generate_scan_diff(
             _diff_records.append(record)
 
         diff_data["new_followers"].extend(_diff_records)
-        print(
-            f"{len(diff_data['new_followers'])} new followers found for user {reference_profile_id}."
+        logger.info(
+            "scan_diff_new_followers_computed",
+            extra={
+                "event": "scan_diff_new_followers_computed",
+                "reference_profile_id": reference_profile_id,
+                "metrics": {"new_followers": len(diff_data["new_followers"])},
+            },
         )
 
         # find unfollowers = prev - now
@@ -511,8 +581,13 @@ def generate_scan_diff(
             _diff_records.append(record)
 
         diff_data["unfollowers"].extend(_diff_records)
-        print(
-            f"{len(diff_data['unfollowers'])} unfollowers found for user {reference_profile_id}."
+        logger.info(
+            "scan_diff_unfollowers_computed",
+            extra={
+                "event": "scan_diff_unfollowers_computed",
+                "reference_profile_id": reference_profile_id,
+                "metrics": {"unfollowers": len(diff_data["unfollowers"])},
+            },
         )
         target_profile_ids = {
             follower.pk_id for follower in diff_data["new_followers"]
@@ -592,7 +667,14 @@ def get_diff_by_id(diff_id: str) -> dict | None:
 
             return json.load(f)
     except FileNotFoundError:
-        print(f"[DB Service] Diff file not found at path: {diff_file_path}")
+        logger.warning(
+            "diff_file_missing",
+            extra={
+                "event": "diff_file_missing",
+                "diff_id": diff_id,
+                "diff_file_path": str(diff_file_path),
+            },
+        )
         return None
 
 

@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import datetime
 from time import perf_counter
@@ -6,6 +7,7 @@ from typing import TypeVar
 from meerkit.services import db_service
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class InstagramApiUsageTracker:
@@ -33,7 +35,16 @@ class InstagramApiUsageTracker:
             )
         except Exception as exc:
             # Metrics collection should never break primary workflows.
-            print(f"[InstagramApiUsageTracker] Failed to record cache hit: {exc}")
+            logger.warning(
+                "instagram_api_usage_cache_hit_record_failed",
+                extra={
+                    "event": "instagram_api_usage_cache_hit_record_failed",
+                    "error": str(exc),
+                    "app_user_id": app_user_id,
+                    "instagram_user_id": instagram_user_id,
+                    "category": category,
+                },
+            )
 
     def track_call(
         self,
@@ -68,7 +79,17 @@ class InstagramApiUsageTracker:
                 )
             except Exception as exc:
                 # Metrics collection should never break primary workflows.
-                print(f"[InstagramApiUsageTracker] Failed to record usage event: {exc}")
+                logger.warning(
+                    "instagram_api_usage_event_record_failed",
+                    extra={
+                        "event": "instagram_api_usage_event_record_failed",
+                        "error": str(exc),
+                        "app_user_id": app_user_id,
+                        "instagram_user_id": instagram_user_id,
+                        "category": category,
+                        "metrics": {"duration_ms": duration_ms, "success": success},
+                    },
+                )
 
 
 instagram_api_usage_tracker = InstagramApiUsageTracker()

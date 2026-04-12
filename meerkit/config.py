@@ -118,6 +118,21 @@ TASKS_CANCELLED_EXPIRY_SECONDS = int(
     os.environ.get("TASKS_CANCELLED_EXPIRY_SECONDS", "300")
 )
 
+# Logging
+LOGGING_ENABLED = _env_flag("LOGGING_ENABLED", True)
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "DEBUG")
+LOG_FILE_PATH = os.environ.get("LOG_FILE_PATH", "logs/app.jsonl")
+LOG_ROTATION_MAX_BYTES = int(os.environ.get("LOG_ROTATION_MAX_BYTES", "10485760"))
+LOG_ROTATION_BACKUP_COUNT = int(os.environ.get("LOG_ROTATION_BACKUP_COUNT", "5"))
+LOG_REDACT_SENSITIVE_FIELDS = _env_flag("LOG_REDACT_SENSITIVE_FIELDS", True)
+LOG_SUPPRESSED_LOGGERS = [
+    name.strip()
+    for name in os.environ.get(
+        "LOG_SUPPRESSED_LOGGERS", "watchdog.observers.inotify_buffer,werkzeug"
+    ).split(",")
+    if name.strip()
+]
+
 # Create directories on import so nothing needs to worry about them not existing
 for _d in [DATA_DIR, CACHE_DIR, USERS_DIR, SCANS_DIR, DIFFS_DIR, IMAGE_CACHE_DIR]:
     _d.mkdir(parents=True, exist_ok=True)
