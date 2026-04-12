@@ -1283,13 +1283,245 @@ def execute_unfollow_item(
     return False
 
 
+# ── Left-right comparison helpers ─────────────────────────────────────────────
+
+
+def _left_right_are_same(
+    right_target: dict,
+    left_user_id: str,
+    left_username: str | None,
+) -> bool:
+    """Return True if right_target refers to the same account as the left item."""
+    right_user_id = str(right_target.get("normalized_user_id") or "").strip()
+    if right_user_id and right_user_id == left_user_id:
+        return True
+    if not left_username:
+        return False
+    right_username = str(right_target.get("normalized_username") or "").strip().lower()
+    if right_username and right_username == left_username.lower():
+        return True
+    right_identity_key = str(right_target.get("identity_key") or "").strip().lower()
+    return bool(right_identity_key and right_identity_key == left_username.lower())
+
+
+def _resolve_right_target_user_id(
+    right_target: dict,
+    instagram_user: dict,
+    app_user_id: str,
+) -> tuple[dict, str | None]:
+    """Resolve numeric user ID for a right-side target if not already present.
+
+    Returns (updated_target_copy, user_id). user_id is None when resolution fails.
+    """
+    updated = dict(right_target)
+    user_id = updated.get("normalized_user_id")
+    if user_id:
+        return updated, user_id
+    username = updated.get("normalized_username")
+    if not username:
+        return updated, None
+    resolved = _resolve_identity_to_user_id(
+        app_user_id=app_user_id,
+        reference_profile_id=instagram_user["instagram_user_id"],
+        instagram_user=instagram_user,
+        normalized_username=username,
+    )
+    if resolved:
+        updated["normalized_user_id"] = resolved
+    return updated, resolved
+
+
+def _build_connection_record(
+    right_target: dict,
+    right_user_id: str | None,
+    is_following: bool,
+) -> dict:
+    """Build the per-right-target connection entry for a comparison result row."""
+    return {
+        "right_identity_key": right_target.get("identity_key"),
+        "right_display": (
+            right_target.get("display_username")
+            or right_target.get("normalized_username")
+            or right_target.get("normalized_user_id")
+        ),
+        "right_user_id": right_user_id,
+        "is_following": is_following,
+        "resolved": bool(right_user_id),
+    }
+
+
+def _process_right_targets_by_follower_set(
+    right_targets: list[dict],
+    follower_ids: set[str],
+    instagram_user: dict,
+    app_user_id: str,
+) -> tuple[list[dict], list[dict], int, int]:
+    """Check each right target's presence in a pre-fetched follower ID set.
+
+    Returns (updated_right_targets, connections, follows_count, unresolved_count).
+    """
+    updated_right_targets: list[dict] = []
+    connections: list[dict] = []
+    follows_count = 0
+    unresolved_count = 0
+
+    for target in right_targets:
+        updated, right_user_id = _resolve_right_target_user_id(
+            target, instagram_user, app_user_id
+        )
+        is_following = bool(right_user_id and right_user_id in follower_ids)
+        if is_following:
+            follows_count += 1
+        if not right_user_id:
+            unresolved_count += 1
+        connections.append(
+            _build_connection_record(updated, right_user_id, is_following)
+        )
+        updated_right_targets.append(updated)
+
+    return updated_right_targets, connections, follows_count, unresolved_count
+
+
+def _check_right_follows_current_user(
+    right_user_id: str,
+    instagram_user: dict,
+    app_user_id: str,
+) -> bool:
+    """Check if right_user_id follows the authenticated user via fresh friendship_status.
+
+    Uses a single metadata fetch (friendship_status.followed_by) per target instead
+    of enumerating all followers. Returns False on any API failure.
+    """
+    profile = _get_cached_profile(instagram_user)
+    try:
+        summary = instagram_gateway.get_target_user_data(
+            app_user_id=app_user_id,
+            instagram_user_id=instagram_user["instagram_user_id"],
+            profile=profile,
+            target_user_id=right_user_id,
+            caller_service="automation_service",
+            caller_method="_check_right_follows_current_user",
+            force_refresh=True,
+        )
+    except Exception:
+        return False
+    return bool(summary.get("being_followed_by_account"))
+
+
+def _process_right_targets_via_friendship_status(
+    right_targets: list[dict],
+    instagram_user: dict,
+    app_user_id: str,
+) -> tuple[list[dict], list[dict], int, int]:
+    """Check each right target using fresh per-target friendship_status.
+
+    Used when the left profile is the authenticated user's own account. Avoids a
+    full-follower-list fetch by using metadata calls whose response includes
+    friendship_status.followed_by directly.
+
+    Returns (updated_right_targets, connections, follows_count, unresolved_count).
+    """
+    updated_right_targets: list[dict] = []
+    connections: list[dict] = []
+    follows_count = 0
+    unresolved_count = 0
+
+    for target in right_targets:
+        updated, right_user_id = _resolve_right_target_user_id(
+            target, instagram_user, app_user_id
+        )
+        if not right_user_id:
+            unresolved_count += 1
+            connections.append(_build_connection_record(updated, None, False))
+            updated_right_targets.append(updated)
+            continue
+        is_following = _check_right_follows_current_user(
+            right_user_id, instagram_user, app_user_id
+        )
+        if is_following:
+            follows_count += 1
+        connections.append(
+            _build_connection_record(updated, right_user_id, is_following)
+        )
+        updated_right_targets.append(updated)
+
+    return updated_right_targets, connections, follows_count, unresolved_count
+
+
+def _aggregate_comparison_totals(
+    existing_rows: list[dict],
+    comparison_result: dict,
+    updated_right_targets: list[dict],
+) -> dict:
+    """Recompute running totals across all accumulated left rows."""
+    totals = dict(comparison_result.get("totals") or {})
+    totals["left_total"] = int(totals.get("left_total") or len(existing_rows))
+    totals["right_total"] = int(totals.get("right_total") or len(updated_right_targets))
+    totals["relations_total"] = int(
+        totals.get("relations_total") or totals["left_total"] * totals["right_total"]
+    )
+    totals["follows_total"] = sum(
+        int(r.get("follows_count") or 0) for r in existing_rows
+    )
+    totals["missing_total"] = sum(
+        int(r.get("missing_count") or 0) for r in existing_rows
+    )
+    totals["unresolved_total"] = sum(
+        int(r.get("unresolved_count") or 0) for r in existing_rows
+    )
+    return totals
+
+
+def _persist_comparison_progress(
+    *,
+    action_id: str,
+    item_id: str,
+    config: dict,
+    comparison_result: dict,
+    updated_right_targets: list[dict],
+    left_row: dict,
+) -> None:
+    """Merge left_row into comparison_result, recompute totals, and persist to DB."""
+    existing_rows = [
+        row
+        for row in list(comparison_result.get("left_rows") or [])
+        if row.get("left_item_id") != item_id
+    ]
+    existing_rows.append(left_row)
+    totals = _aggregate_comparison_totals(
+        existing_rows, comparison_result, updated_right_targets
+    )
+    comparison_result.update(
+        {
+            "status": "running",
+            "left_rows": existing_rows,
+            "right_targets": updated_right_targets,
+            "totals": totals,
+        }
+    )
+    config["comparison_result"] = comparison_result
+    db_service.update_automation_action(action_id, config_json=config)
+    db_service.update_automation_action_item(
+        item_id,
+        status="completed",
+        result_json=left_row,
+        executed_at=_now_iso(),
+    )
+
+
 def execute_left_right_compare_item(
     *,
     item: dict,
     instagram_user: dict,
     app_user_id: str,
 ) -> bool:
-    """Execute one left-side comparison item against all right-side targets."""
+    """Execute one left-side comparison item against all right-side targets.
+
+    When the left account is the authenticated user, uses per-target fresh
+    friendship_status (one metadata call each) instead of fetching all followers.
+    Right targets that resolve to the same account as the left item are excluded
+    from the comparison.
+    """
     item_id = item["item_id"]
     action_id = item["action_id"]
     db_service.update_automation_action_item(item_id, status="running")
@@ -1307,125 +1539,84 @@ def execute_left_right_compare_item(
     left_display = (
         item.get("normalized_username") or item.get("display_username") or left_user_id
     )
+    left_username: str | None = (
+        str(item.get("normalized_username") or "").strip() or None
+    )
 
-    profile = _get_cached_profile(instagram_user)
-    try:
-        left_followers = instagram_gateway.get_target_followers_v2(
-            app_user_id=app_user_id,
-            instagram_user_id=instagram_user["instagram_user_id"],
-            profile=profile,
-            target_user_id=left_user_id,
-            caller_service="automation_service",
-            caller_method="execute_left_right_compare_item",
-        )
-    except Exception as exc:
-        db_service.update_automation_action_item(
-            item_id,
-            status="error",
-            error=f"Failed fetching followers for {left_display}: {exc}",
-            executed_at=_now_iso(),
-        )
-        return False
-
-    follower_ids = {record.pk_id for record in left_followers}
     action = db_service.get_automation_action(action_id)
     config = (action or {}).get("config") or {}
     comparison_result = dict(config.get("comparison_result") or {})
-    right_targets = list(comparison_result.get("right_targets") or [])
+    # Exclude right targets that are the same account as the current left item.
+    right_targets = [
+        t
+        for t in list(comparison_result.get("right_targets") or [])
+        if not _left_right_are_same(t, left_user_id, left_username)
+    ]
 
-    updated_right_targets: list[dict] = []
-    connections: list[dict] = []
-    follows_count = 0
-    unresolved_count = 0
+    is_current_user = left_user_id == instagram_user["instagram_user_id"]
 
-    for target in right_targets:
-        right_target = dict(target)
-        right_user_id = right_target.get("normalized_user_id")
-        right_username = right_target.get("normalized_username")
-
-        if not right_user_id and right_username:
-            resolved_right = _resolve_identity_to_user_id(
-                app_user_id=app_user_id,
-                reference_profile_id=instagram_user["instagram_user_id"],
+    if is_current_user:
+        # Optimized path: use per-target friendship_status instead of a full follower fetch.
+        updated_right_targets, connections, follows_count, unresolved_count = (
+            _process_right_targets_via_friendship_status(
+                right_targets=right_targets,
                 instagram_user=instagram_user,
-                normalized_username=right_username,
+                app_user_id=app_user_id,
             )
-            if resolved_right:
-                right_user_id = resolved_right
-                right_target["normalized_user_id"] = resolved_right
-
-        is_following = bool(right_user_id and right_user_id in follower_ids)
-        if is_following:
-            follows_count += 1
-        if not right_user_id:
-            unresolved_count += 1
-
-        connections.append(
-            {
-                "right_identity_key": right_target.get("identity_key"),
-                "right_display": right_target.get("display_username")
-                or right_target.get("normalized_username")
-                or right_target.get("normalized_user_id"),
-                "right_user_id": right_user_id,
-                "is_following": is_following,
-                "resolved": bool(right_user_id),
-            }
         )
-        updated_right_targets.append(right_target)
+        left_followers_count: int | None = None
+    else:
+        profile = _get_cached_profile(instagram_user)
+        try:
+            left_followers = instagram_gateway.get_target_followers_v2(
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user["instagram_user_id"],
+                profile=profile,
+                target_user_id=left_user_id,
+                caller_service="automation_service",
+                caller_method="execute_left_right_compare_item",
+                force_refresh=True,
+            )
+        except Exception as exc:
+            db_service.update_automation_action_item(
+                item_id,
+                status="error",
+                error=f"Failed fetching followers for {left_display}: {exc}",
+                executed_at=_now_iso(),
+            )
+            return False
+
+        follower_ids = {record.pk_id for record in left_followers}
+        updated_right_targets, connections, follows_count, unresolved_count = (
+            _process_right_targets_by_follower_set(
+                right_targets=right_targets,
+                follower_ids=follower_ids,
+                instagram_user=instagram_user,
+                app_user_id=app_user_id,
+            )
+        )
+        left_followers_count = len(left_followers)
 
     missing_count = len(connections) - follows_count
-
     left_row = {
         "left_item_id": item_id,
         "left_raw_input": item.get("raw_input"),
         "left_display": left_display,
         "left_user_id": left_user_id,
-        "left_followers_count": len(left_followers),
+        "left_followers_count": left_followers_count,
         "follows_count": follows_count,
         "missing_count": missing_count,
         "unresolved_count": unresolved_count,
         "connections": connections,
     }
 
-    existing_rows = [
-        row
-        for row in list(comparison_result.get("left_rows") or [])
-        if row.get("left_item_id") != item_id
-    ]
-    existing_rows.append(left_row)
-
-    total_follows = sum(int(row.get("follows_count") or 0) for row in existing_rows)
-    total_missing = sum(int(row.get("missing_count") or 0) for row in existing_rows)
-    total_unresolved = sum(
-        int(row.get("unresolved_count") or 0) for row in existing_rows
-    )
-
-    totals = dict(comparison_result.get("totals") or {})
-    totals["left_total"] = int(totals.get("left_total") or len(existing_rows))
-    totals["right_total"] = int(totals.get("right_total") or len(updated_right_targets))
-    totals["relations_total"] = int(
-        totals.get("relations_total") or totals["left_total"] * totals["right_total"]
-    )
-    totals["follows_total"] = total_follows
-    totals["missing_total"] = total_missing
-    totals["unresolved_total"] = total_unresolved
-
-    comparison_result.update(
-        {
-            "status": "running",
-            "left_rows": existing_rows,
-            "right_targets": updated_right_targets,
-            "totals": totals,
-        }
-    )
-
-    config["comparison_result"] = comparison_result
-    db_service.update_automation_action(action_id, config_json=config)
-    db_service.update_automation_action_item(
-        item_id,
-        status="completed",
-        result_json=left_row,
-        executed_at=_now_iso(),
+    _persist_comparison_progress(
+        action_id=action_id,
+        item_id=item_id,
+        config=config,
+        comparison_result=comparison_result,
+        updated_right_targets=updated_right_targets,
+        left_row=left_row,
     )
     return True
 
