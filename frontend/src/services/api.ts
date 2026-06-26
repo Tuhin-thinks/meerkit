@@ -31,6 +31,12 @@ import type {
   AlternativeAccountLinksResponse,
   AddAlternativeAccountLinksResponse,
 } from '../types/automation'
+import type {
+  ApiCurlPattern,
+  CurlParseResult,
+  PatternTestResult,
+  RefreshTokensResult,
+} from '../types/apiPattern'
 
 const http = axios.create({
   baseURL: '/api',
@@ -425,3 +431,67 @@ export const removeAlternativeAccountLink = (
       },
     )
     .then((r) => r.data)
+
+export const parseCurl = (curlText: string) =>
+  http.post<CurlParseResult>('/curl-patterns/parse', { curl_text: curlText }).then((r) => r.data)
+
+export const storeCurlPattern = (internalName: string, payload: {
+  display_name: string
+  curl_command: string
+  url: string
+  http_method: string
+  selected_cookies: string[]
+  selected_headers: string[]
+  selected_data: string[]
+  selected_variables: string[]
+  generated_script?: string
+}) =>
+  http.post<ApiCurlPattern>(`/curl-patterns/${encodeURIComponent(internalName)}`, payload, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const getCurlPattern = (internalName: string) =>
+  http.get<ApiCurlPattern | null>(`/curl-patterns/${encodeURIComponent(internalName)}`, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const listCurlPatterns = () =>
+  http.get<ApiCurlPattern[]>('/curl-patterns', {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const updateCurlPattern = (internalName: string, payload: Partial<{
+  display_name: string
+  curl_command: string
+  url: string
+  http_method: string
+  selected_cookies: string[]
+  selected_headers: string[]
+  selected_data: string[]
+  selected_variables: string[]
+  generated_script: string
+  is_active: number
+}>) =>
+  http.patch<ApiCurlPattern>(`/curl-patterns/${encodeURIComponent(internalName)}`, payload, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const deleteCurlPattern = (internalName: string) =>
+  http.delete<{ ok: boolean }>(`/curl-patterns/${encodeURIComponent(internalName)}`, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const testCurlPattern = (internalName: string, runtimeValues?: Record<string, unknown>) =>
+  http.post<PatternTestResult>(`/curl-patterns/${encodeURIComponent(internalName)}/test`, runtimeValues ?? {}, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const generateCurlScript = (internalName: string) =>
+  http.post<{ script: string }>(`/curl-patterns/${encodeURIComponent(internalName)}/generate`, {}, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const refreshSessionTokens = () =>
+  http.post<RefreshTokensResult>('/curl-patterns/refresh-session-tokens', {}, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)

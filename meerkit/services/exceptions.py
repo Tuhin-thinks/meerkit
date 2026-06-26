@@ -90,3 +90,19 @@ class InvalidImageContentError(DownloadError):
 
 class RelationshipCacheError(PersistenceError):
     default_error_code = "relationship_cache_error"
+
+
+class MissingCurlPatternError(ExternalServiceError):
+    default_error_code = "missing_curl_pattern"
+
+    def __init__(
+        self,
+        internal_name: str,
+        display_name: str = "",
+        message: str | None = None,
+    ) -> None:
+        self.internal_name = internal_name
+        self.display_name = display_name
+        super().__init__(
+            message or f"Missing API curl pattern: {display_name or internal_name}",
+        )

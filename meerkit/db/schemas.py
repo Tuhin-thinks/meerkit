@@ -357,6 +357,31 @@ ON automation_alt_account_links (
 );
 """
 
+API_CURL_PATTERNS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS api_curl_patterns (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    app_user_id        TEXT NOT NULL,
+    internal_name      TEXT NOT NULL,
+    display_name       TEXT NOT NULL,
+    curl_command       TEXT NOT NULL,
+    url                TEXT NOT NULL,
+    http_method        TEXT NOT NULL DEFAULT 'POST',
+    selected_cookies   TEXT NOT NULL DEFAULT '[]',
+    selected_headers   TEXT NOT NULL DEFAULT '[]',
+    selected_data      TEXT NOT NULL DEFAULT '[]',
+    selected_variables TEXT NOT NULL DEFAULT '[]',
+    generated_script   TEXT,
+    is_active          INTEGER DEFAULT 1,
+    created_at         TEXT DEFAULT (datetime('now')),
+    updated_at         TEXT DEFAULT (datetime('now')),
+    UNIQUE(app_user_id, internal_name)
+);"""
+
+API_CURL_PATTERNS_INTERNAL_NAME_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_api_curl_patterns_internal_name
+ON api_curl_patterns (app_user_id, internal_name);
+"""
+
 AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_automation_primary_accounts_scope
 ON automation_primary_accounts (
@@ -398,4 +423,6 @@ schema_collection = {
     "idx_automation_safelists_scope": AUTOMATION_SAFELISTS_SCOPE_INDEX,
     "idx_automation_alt_account_links_scope": AUTOMATION_ALT_ACCOUNT_LINKS_SCOPE_INDEX,
     "idx_automation_primary_accounts_scope": AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX,
+    "api_curl_patterns": API_CURL_PATTERNS_SCHEMA,
+    "idx_api_curl_patterns_internal_name": API_CURL_PATTERNS_INTERNAL_NAME_INDEX,
 }
