@@ -56,10 +56,12 @@ const { data: apiUsageSummary } = useQuery({
 
 // ── Scan trigger ───────────────────────────────────────────────────────────
 const scanError409 = ref(false);
+const scanJustTriggered = ref(false);
 const { mutate: triggerScan, isPending: triggerPending } = useMutation({
     mutationFn: api.triggerScan,
     onSuccess: () => {
         scanError409.value = false;
+        scanJustTriggered.value = true;
         // Make status polling kick in immediately
         queryClient.invalidateQueries({ queryKey: ["scan", "status", props.profileId] });
     },
@@ -70,11 +72,17 @@ const { mutate: triggerScan, isPending: triggerPending } = useMutation({
     },
 });
 
-// When a scan transitions running → idle, refresh all derived queries
+// When a scan transitions running → idle, refresh all derived queries.
+// Also handles the fast-scan race: if a scan was just triggered and the
+// status resolves directly to idle (scan finished before first poll), we
+// still invalidate the dependent queries.
 watch(
     () => scanStatus.value?.status,
     (newStatus, oldStatus) => {
-        if (oldStatus === "running" && newStatus === "idle") {
+        const isRunningToIdle = oldStatus === "running" && newStatus === "idle";
+        const isFastComplete = scanJustTriggered.value && newStatus === "idle";
+        if (isRunningToIdle || isFastComplete) {
+            scanJustTriggered.value = false;
             queryClient.invalidateQueries({ queryKey: ["diff", "latest", props.profileId] });
             queryClient.invalidateQueries({ queryKey: ["summary", props.profileId] });
             queryClient.invalidateQueries({ queryKey: ["history", props.profileId] });
