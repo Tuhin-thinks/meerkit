@@ -92,7 +92,7 @@ function _applyPreferences(prefs: FieldPreferences | null, suggestions: CurlPars
 
 async function savePreferences() {
   try {
-    await setPreference(preferenceKey, _selectionSnapshot());
+    await setPreference(preferenceKey, _selectionSnapshot(), props.profileId);
   } catch (err) {
     console.error("savePreferences failed", err);
   }
@@ -102,8 +102,8 @@ async function loadSaved() {
   isLoading.value = true;
   try {
     const [pattern, prefs] = await Promise.all([
-      getCurlPattern(props.internalName),
-      getPreference(preferenceKey),
+      getCurlPattern(props.internalName, props.profileId),
+      getPreference(preferenceKey, props.profileId),
     ]);
     if (pattern) {
       savedPattern.value = pattern;
@@ -143,7 +143,7 @@ async function handleParse() {
     const prefs = oldPrefs.selected_cookies.length || oldPrefs.selected_headers.length
       || oldPrefs.selected_data.length || oldPrefs.selected_variables.length
       ? oldPrefs
-      : await getPreference(preferenceKey);
+      : await getPreference(preferenceKey, props.profileId);
     _applyPreferences(prefs, result.suggestions);
     hasUnsavedChanges.value = true;
     savePreferences();
@@ -168,9 +168,9 @@ async function handleSave() {
       selected_headers: selectedHeaders.value,
       selected_data: selectedData.value,
       selected_variables: selectedVariables.value,
-    });
+    }, props.profileId);
     hasUnsavedChanges.value = false;
-    savedPattern.value = await getCurlPattern(props.internalName);
+    savedPattern.value = await getCurlPattern(props.internalName, props.profileId);
     emit("saved");
   } catch (err: unknown) {
     saveError.value = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Failed to save pattern";
@@ -182,7 +182,7 @@ async function handleSave() {
 async function handleGenerate() {
   scriptLoading.value = true;
   try {
-    const result = await generateCurlScript(props.internalName);
+    const result = await generateCurlScript(props.internalName, props.profileId);
     generatedScript.value = result.script;
   } catch {
     generatedScript.value = "# Could not generate script — save the pattern first.";
@@ -196,7 +196,7 @@ async function handleTest() {
   testError.value = "";
   testResult.value = null;
   try {
-    testResult.value = await testCurlPattern(props.internalName);
+    testResult.value = await testCurlPattern(props.internalName, undefined, props.profileId);
   } catch (err: unknown) {
     testError.value = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Test failed";
   } finally {
@@ -206,7 +206,7 @@ async function handleTest() {
 
 async function handleDelete() {
   try {
-    await deleteCurlPattern(props.internalName);
+    await deleteCurlPattern(props.internalName, props.profileId);
     curlText.value = "";
     parseResult.value = null;
     savedPattern.value = null;

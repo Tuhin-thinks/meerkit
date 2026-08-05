@@ -444,19 +444,19 @@ export const storeCurlPattern = (internalName: string, payload: {
   selected_data: string[]
   selected_variables: string[]
   generated_script?: string
-}) =>
+}, profileId?: string) =>
   http.post<ApiCurlPattern>(`/curl-patterns/${encodeURIComponent(internalName)}`, payload, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const getCurlPattern = (internalName: string) =>
+export const getCurlPattern = (internalName: string, profileId?: string) =>
   http.get<ApiCurlPattern | null>(`/curl-patterns/${encodeURIComponent(internalName)}`, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const listCurlPatterns = () =>
+export const listCurlPatterns = (profileId?: string) =>
   http.get<ApiCurlPattern[]>('/curl-patterns', {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
 export const updateCurlPattern = (internalName: string, payload: Partial<{
@@ -470,24 +470,24 @@ export const updateCurlPattern = (internalName: string, payload: Partial<{
   selected_variables: string[]
   generated_script: string
   is_active: number
-}>) =>
+}>, profileId?: string) =>
   http.patch<ApiCurlPattern>(`/curl-patterns/${encodeURIComponent(internalName)}`, payload, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const deleteCurlPattern = (internalName: string) =>
+export const deleteCurlPattern = (internalName: string, profileId?: string) =>
   http.delete<{ ok: boolean }>(`/curl-patterns/${encodeURIComponent(internalName)}`, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const testCurlPattern = (internalName: string, runtimeValues?: Record<string, unknown>) =>
+export const testCurlPattern = (internalName: string, runtimeValues?: Record<string, unknown>, profileId?: string) =>
   http.post<PatternTestResult>(`/curl-patterns/${encodeURIComponent(internalName)}/test`, runtimeValues ?? {}, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const generateCurlScript = (internalName: string) =>
+export const generateCurlScript = (internalName: string, profileId?: string) =>
   http.post<{ script: string }>(`/curl-patterns/${encodeURIComponent(internalName)}/generate`, {}, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
 export type FieldPreferences = {
@@ -497,12 +497,12 @@ export type FieldPreferences = {
   selected_variables: string[]
 }
 
-export const getPreference = (key: string) =>
+export const getPreference = (key: string, profileId?: string) =>
   http.get<FieldPreferences | null>(`/curl-patterns/preferences/${encodeURIComponent(key)}`, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 
-export const setPreference = (key: string, value: FieldPreferences) =>
+export const setPreference = (key: string, value: FieldPreferences, profileId?: string) =>
   http.put<FieldPreferences>(`/curl-patterns/preferences/${encodeURIComponent(key)}`, value, {
-    params: { profile_id: activeInstagramUserId },
+    params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
