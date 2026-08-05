@@ -1,40 +1,4 @@
 
-<div align="center">
-
-<!-- Status Banner Start -->
-<table>
-  <tr>
-    <td>
-      <p align="center">
-        <img src="https://img.shields.io/badge/STATUS-TEMPORARILY%20UNAVAILABLE-red?style=for-the-badge" alt="Status: Temporarily Unavailable"/>
-      </p>
-      <h2>⚠️ Instagram API Breaking Change — Service Disruption</h2>
-      <p>
-        Instagram has introduced a new CSRF protection mechanism using the <code>fb_dtsg</code> variable,<br>
-        which now includes a <strong>checksum and timestamp</strong> on every API request.<br><br>
-        This change blocks the existing session-based authentication method used by Meerkit<br>
-        to access Instagram data (followers, following, profile info, etc.).<br><br>
-        <strong>What does this mean?</strong><br>
-        Some features — particularly the <em>unfollwer scan, follow/unfollow automation, and batch operations</em><br>
-        — are currently <strong>non-functional</strong> until we adapt to the new API requirements.
-      </p>
-      <p>
-        <strong>What we're doing:</strong><br>
-        We are actively working on migrating to <strong>Instagram's official GraphQL API</strong>,<br>
-        which provides a more stable, authenticated, and supported way to access data.
-      </p>
-      <p>
-        <em>We appreciate your patience while we work on this fix.</em>
-      </p>
-    </td>
-  </tr>
-</table>
-<!-- Status Banner End -->
-
-</div>
-
----
-
 # Meerkit – Instagram Unfollower Tracker & Growth Toolkit
 
 👉🏻 Find out who doesn't follow you back on Instagram and generate a clean unfollower list.
@@ -70,6 +34,21 @@ Unlike typical Instagram unfollower tools, Meerkit is built for **analysis + aut
 - Profile image caching for faster UI
 - Follow-back prediction workflows
 - Automation with visibility (not blind scripts)
+
+---
+
+## 🔌 Instagram API Gateway (Curl Patterns)
+
+Meerkit talks to Instagram through a **curl-pattern API gateway**: instead of hardcoded request logic, every Instagram operation is driven by a `curl` command that you paste into the app.
+
+- Per-operation curl commands are stored in the `api_curl_patterns` database table, keyed by `(app_user_id, internal_name)`.
+- Supported operations: `fetch_user_profile_data`, `fetch_followers_list`, `fetch_following_list`, `follow_user`, `unfollow_user` (plus `search_user` as a reserved pattern name).
+- **Session credentials** (`sessionid`, `csrftoken`, `ds_user_id`) are extracted automatically from your stored curl commands — no need to copy individual credential fields anywhere.
+- To set it up, capture a curl command from your browser's **Developer Tools → Network** tab while using Instagram, then paste it into **Admin → Account Details → API Scripts** and pick the matching operation.
+
+> **Note:** Instagram's session cookies and CSRF values (including `fb_dtsg`) expire over time. When an API call stops working, re-capture a fresh curl command in the browser and update the corresponding pattern in **API Scripts**.
+
+See the [Architecture guide](docs/architecture.md) and [API Reference](docs/api-reference.md) for the technical details.
 
 ---
 

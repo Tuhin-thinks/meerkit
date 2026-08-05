@@ -166,6 +166,8 @@ Request:
 }
 ```
 
+> **Note:** The frontend "Credentials" tab was removed. Session credential refresh is now done by re-capturing and re-saving curl commands in the **API Scripts** tab; this PATCH endpoint remains for display-name updates and cookie-string refreshes.
+
 ### POST `/auth/instagram-users/<instagram_user_id>/select`
 Set active Instagram account.
 
@@ -175,10 +177,115 @@ Delete one Instagram account and associated data scope.
 ### DELETE `/auth/instagram-users`
 Delete all Instagram accounts for current app user.
 
+## Curl Pattern Endpoints (`/api/curl-patterns`)
+
+These endpoints manage the per-operation curl commands that drive the Instagram API gateway. Patterns are stored in the `api_curl_patterns` table, keyed by `(app_user_id, internal_name)`.
+
+Supported `internal_name` values: `fetch_user_profile_data`, `fetch_followers_list`, `fetch_following_list`, `follow_user`, `unfollow_user`, `search_user`.
+
+### POST `/curl-patterns/parse`
+Parse a pasted curl command into URL, HTTP method, and field suggestions.
+
+Request:
+
+```json
+{
+  "curl_text": "curl 'https://www.instagram.com/...' -H '...' --data-raw '...'"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "url": "https://www.instagram.com/api/graphql",
+  "http_method": "POST",
+  "cookies": {},
+  "headers": {},
+  "data": {},
+  "variables": {},
+  "suggestions": {
+    "cookies": [],
+    "headers": [],
+    "data": [],
+    "variables": []
+  }
+}
+```
+
+Response `400` with `code: "parse_error"` when the command cannot be parsed.
+
+### GET `/curl-patterns`
+List all stored patterns for the current scope.
+
+### GET `/curl-patterns/<internal_name>`
+Get one pattern, or `null` when not configured.
+
+### POST `/curl-patterns/<internal_name>`
+Store (create or replace) a pattern.
+
+Request fields:
+
+- `display_name` (required)
+- `curl_command` (required)
+- `url` (required)
+- `http_method` (required, default `POST`)
+- `selected_cookies`, `selected_headers`, `selected_data`, `selected_variables` (JSON arrays)
+- `generated_script` (optional)
+
+Returns the stored pattern row.
+
+### PATCH `/curl-patterns/<internal_name>`
+Update a subset of pattern fields (`display_name`, `curl_command`, `url`, `http_method`, `selected_*`, `generated_script`, `is_active`).
+
+### DELETE `/curl-patterns/<internal_name>`
+Delete a pattern.
+
+Response `200`:
+
+```json
+{
+  "ok": true
+}
+```
+
+### POST `/curl-patterns/<internal_name>/test`
+Execute the saved pattern against the live Instagram endpoint (session values extracted from the stored curl command). Useful for checking that a session is still valid.
+
+Response `200`:
+
+```json
+{
+  "status_code": 200,
+  "elapsed_ms": 120,
+  "response_text": "{...}",
+  "success": true
+}
+```
+
+### POST `/curl-patterns/<internal_name>/generate`
+Generate a standalone Python `requests` script from the saved pattern.
+
+Response `200`:
+
+```json
+{
+  "script": "import pprint\n..."
+}
+```
+
+### GET `/curl-patterns/preferences/<key>`
+Get stored field-selection preferences for a key (or `null`).
+
+### PUT `/curl-patterns/preferences/<key>`
+Store field-selection preferences (`selected_cookies`, `selected_headers`, `selected_data`, `selected_variables`).
+
 ## Scan & History Endpoints (`/api`)
 
 ### POST `/scan`
 Start async follower scan.
+
+Requires at least one configured curl pattern (session values are extracted from the stored patterns). Without one, returns `400` with `"No API patterns configured. Please set up at least one curl pattern first."`
 
 ### GET `/scan/status`
 Get scan status (`idle | running | cancelled | error`) and last scan metadata.
@@ -407,13 +514,18 @@ curl -X POST http://localhost:5000/api/auth/login \
 # 2) select active IG account
 curl -X POST http://localhost:5000/api/auth/instagram-users/123456/select
 
-# 3) start scan
+# 3) store a curl pattern (captured from browser DevTools)
+curl -X POST "http://localhost:5000/api/curl-patterns/fetch_followers_list" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name":"Fetch Followers","curl_command":"curl ...","url":"...","http_method":"POST"}'
+
+# 4) start scan (requires at least one stored pattern)
 curl -X POST "http://localhost:5000/api/scan?profile_id=123456"
 
-# 4) poll status
+# 5) poll status
 curl "http://localhost:5000/api/scan/status?profile_id=123456"
 
-# 5) read latest diff
+# 6) read latest diff
 curl "http://localhost:5000/api/diff/latest?profile_id=123456"
 ```
 

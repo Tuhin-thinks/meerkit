@@ -48,7 +48,10 @@ Legacy cache migration flag:
 export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
 ```
 
-Instagram credentials are added through the authenticated app UI, not from environment variables.
+Instagram credentials are provided through the **API Scripts** tab (Admin → Account Details) as stored curl
+commands, not from environment variables. Each Instagram operation (profile data, followers, following,
+follow, unfollow) is driven by a curl pattern saved in the `api_curl_patterns` table; session values are
+extracted from those commands automatically. Re-capture and re-save a curl command when the session expires.
 
 ## Running Locally
 

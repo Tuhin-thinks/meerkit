@@ -7,8 +7,11 @@ Meerkit is your follower intel dashboard: scan, compare, predict, and act.
 - Fast follower scans
 - Clean new vs unfollower diffs
 - Scan history and analytics graphs
-- Multi-account and credential management
+- Multi-account management via the curl-pattern API gateway
 - Follow-back predictions + batch workflows
+
+!!! note "Working again after the Instagram API change"
+    Meerkit now talks to Instagram through a **curl-pattern API gateway**. You paste per-operation `curl` commands (captured from your browser's Developer Tools) into the **API Scripts** tab of each account's details page; session credentials are extracted automatically from those commands. See [Architecture](architecture.md) and [Setup](setup.md).
 
 !!! warning "⚠️ Instagram Rate Limit Warning"
     **Do not bulk follow or unfollow users on Instagram.** Doing so can trigger Instagram's spam detection and may lead to account restrictions.

@@ -22,7 +22,10 @@ Current frontend architecture for the Vue 3 app in `frontend/src`.
 - auth forms (register/login/logout)
 - Instagram account create/select/update/delete UI
 - selecting active account for API calls
+- the account details page with **Overview / API Usage / Cache / Alt Accounts Registry / API Scripts** tabs
 - top-level route-to-view composition
+
+> **Note:** The old **Credentials** tab was removed. Session credentials are refreshed by re-saving curl commands in the **API Scripts** tab (`ApiPatternsPanel.vue`).
 
 ## Route Map
 
@@ -68,6 +71,7 @@ Configured in `frontend/src/router/index.ts`:
 `frontend/src/services/api.ts` includes endpoint wrappers for:
 
 - auth + account management
+- curl patterns: `parseCurl`, `storeCurlPattern`, `getCurlPattern`, `listCurlPatterns`, `updateCurlPattern`, `deleteCurlPattern`, `testCurlPattern`, `generateCurlScript`, plus `getPreference`/`setPreference` for field-selection preferences
 - scan/history/diff/image
 - prediction and prediction tasks
 - unified tasks list
@@ -85,6 +89,17 @@ Active Instagram scope is managed through:
 - Mutations update/invalidate query cache after successful writes.
 - Global defaults are set in `main.ts` (stale time, gc time, retries).
 
+## API Scripts (Curl Patterns)
+
+The account details page exposes an **API Scripts** tab that configures the curl-pattern gateway:
+
+- `components/apiPatterns/ApiPatternsPanel.vue`: lists the operations (`fetch_user_profile_data`, `fetch_followers_list`, `fetch_following_list`, `follow_user`, `unfollow_user`, `search_user`) with Configure/Edit entry points.
+- `components/apiPatterns/CurlScriptEditor.vue`: curl textarea + parse/save/test/generate actions; parses a pasted curl command and lets the user pick which cookies, headers, data, and variables to send.
+- `components/apiPatterns/CurlFieldGroup.vue`: reusable field checkbox group for the parsed suggestions.
+- `components/apiPatterns/ScriptPreview.vue`: displays the generated standalone Python script.
+
+Field-selection preferences are persisted per user/pattern via `GET|PUT /api/curl-patterns/preferences/<key>`.
+
 ## Local Persistence Helpers
 
 - `services/automationJobRegistry.ts`:
@@ -98,6 +113,7 @@ Active Instagram scope is managed through:
 - follower/profile cards and skeleton loading components
 - prediction components (`PredictionStatusBadge`, `TaskProgressBar`, etc.)
 - automation registry panel (`AltAccountsRegistryPanel.vue`)
+- API Scripts panel + curl editor components (see above)
 
 ## Build + Run
 

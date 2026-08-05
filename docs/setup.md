@@ -9,7 +9,7 @@ Before you start, ensure you have:
 - **Python** ≥ 3.12
 - **Node.js** ≥ 20 with npm
 - **Git** (to clone the repository)
-- Valid **Instagram session credentials**
+- A browser with an active **Instagram session** (you will capture `curl` commands from it)
 
 ## Installation
 
@@ -52,19 +52,32 @@ Optional cache migration flag:
 export LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED=0
 ```
 
-#### Getting Instagram Credentials
+#### Getting Instagram Credentials (Curl Patterns)
 
-To obtain the credentials you will later paste into the app:
+Meerkit talks to Instagram through a **curl-pattern API gateway**. Each Instagram operation (fetching your profile, your followers, your following list, follow/unfollow actions) is driven by a `curl` command that you paste into the app. The session credentials (`sessionid`, `csrftoken`, `ds_user_id`) are extracted from these stored commands automatically — you never paste individual credential fields into the gateway itself.
+
+To capture a curl command from your browser:
 
 1. Open Instagram in your browser and log in
-2. Open **Developer Tools** (F12 or right-click → Inspect)
-3. Go to **Application** → **Cookies** → select **instagram.com**
-4. Find and copy the following values:
-  - **sessionid** → use as `session_id`
-  - **csrftoken** → use as `csrf_token`
-  - Your numeric user ID can be found in **Account** → **Settings** → **About this account**
+2. Open **Developer Tools** (F12 or right-click → Inspect) → **Network** tab
+3. Trigger the operation you want to configure (for example, open your profile page or click into your followers list)
+4. Find the matching request — for profile data look for a `/api/graphql` request, for lists look for `/api/v1/friendships/...`
+5. Right-click the request → **Copy** → **Copy as cURL (bash)**
+6. In Meerkit, open **Admin → Account Details → API Scripts**, pick the operation, paste the command, and click **Parse**, review the selected fields, then **Save**
 
-These credentials are stored through the app's account management flow, not through an environment file.
+The gateway supports these operations:
+
+| Operation | Used for |
+|---|---|
+| `fetch_user_profile_data` | Profile info (followers/following counts, bio, etc.) |
+| `fetch_followers_list` | Follower list for scans, diffs, and predictions |
+| `fetch_following_list` | Following list for scans, diffs, and predictions |
+| `follow_user` | Follow actions in automation |
+| `unfollow_user` | Unfollow actions in automation |
+
+> **Note:** A pattern is only needed when the app actually uses that operation. A full scan needs `fetch_followers_list` and `fetch_following_list`; automation needs `follow_user` / `unfollow_user`. At least one configured pattern is required before a scan can start.
+
+When you first **create the Instagram account**, the account form still asks for the three session values (`CSRF_TOKEN`, `SESSION_ID`, `USER_ID`) — these can be read straight from the cookies of any curl command you captured (`csrftoken`, `sessionid`, `ds_user_id`).
 
 ## Running the Application
 
@@ -125,9 +138,10 @@ You should see the login page. Create an account or log in to get started!
     Monitor your live Instagram API call count in the in-app **Admin → Account Details → API Usage** tab. See also: [API Monitoring and Limits](showcase.md#5-api-monitoring-and-limits).
 
 1. **Create/Login to Account** – Use any username/password
-2. **Add Instagram Account** – Click "Create Instagram Account" and paste your session credentials
-3. **Run a Scan** – Click "Scan Now" to fetch your current followers
-4. **View Results** – Once the scan completes, you'll see follower counts and changes
+2. **Add Instagram Account** – Click "Create Instagram Account" and paste your session values (`csrf_token`, `session_id`, `user_id` from your curl command's cookies)
+3. **Configure API Patterns** – Open the account's details page → **API Scripts** and save curl commands for `fetch_followers_list` and `fetch_following_list` (see "Getting Instagram Credentials" above)
+4. **Run a Scan** – Click "Scan Now" to fetch your current followers
+5. **View Results** – Once the scan completes, you'll see follower counts and changes
 
 ## Verify Installation
 
@@ -197,11 +211,11 @@ chmod +x .venv/bin/activate
 
 ### Instagram Session Expired
 
-Your Instagram `session_id` and `csrf_token` expire after some time. If you see auth errors:
+Your Instagram session cookies (including `sessionid`, `csrftoken`, and the `fb_dtsg` form value) expire after some time. If you see auth errors or non-JSON responses from Instagram:
 
 1. Log out and back into Instagram in your browser
-2. Get fresh credentials (see "Getting Instagram Credentials" above)
-3. Update the Instagram account credentials in the app
+2. Re-capture the affected curl commands (see "Getting Instagram Credentials" above)
+3. Update the patterns in the **API Scripts** tab (or re-save the `fetch_user_profile_data` pattern, which is the default source of session values)
 4. Run another scan
 
 ## Next Steps

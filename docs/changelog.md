@@ -81,8 +81,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+### Added
+
+- **Curl-pattern API gateway**: per-operation curl commands stored in the `api_curl_patterns` table drive all Instagram traffic (`fetch_user_profile_data`, `fetch_followers_list`, `fetch_following_list`, `follow_user`, `unfollow_user`).
+- New API Scripts editor in the frontend (`ApiPatternsPanel.vue`, `CurlScriptEditor.vue`, `CurlFieldGroup.vue`) — paste a curl command, review parsed fields, save, generate a Python script, and test it live.
+- Curl pattern endpoints under `/api/curl-patterns/*` (parse, CRUD, test, generate) plus per-user field-selection preferences.
+- Pagination for followers/following scan endpoints (`next_max_id` cursor for followers; numeric `max_id` incrementing by 12 for following; dedupe by `pk`/`id`; configurable max pages and delay).
+- Manual test scripts for the Instagram GraphQL API.
+
+### Fixed
+
+- Instagram API breaking changes: CSRF `fb_dtsg` enforcement and the `/graphql/query` → `/api/graphql` + REST v1 `/api/v1/friendships/...` migration are handled by the curl-pattern gateway.
+- Gateway parses both REST v1 and GraphQL response formats for followers/following.
+- Hardcoded user IDs in URL paths are replaced with `{{runtime.target_user_id}}` at parse time, and `/friendships/{id}/` path segments are auto-swapped at request build time.
+- Follower/following counts are read from both `account_followers_count`/`follower_count` field-name variants.
+- Fast-scan race in the dashboard: a scan that completes before the first status poll still refreshes diff/summary/history.
+- Deduplication of users across paginated pages.
+
 ### Changed
 
+- Session credentials (`csrf_token`, `session_id`, `user_id`) are extracted from stored curl patterns via `extract_session_from_curl_pattern()` instead of `instagram_users.json`.
+- `_build_profile()` simplified to gateway-only fields; `doc_id`, `relay_variables`, `extra_cookies`, and `extra_headers` are dead code paths.
+- Frontend **Credentials** tab removed; credential refresh now happens by re-saving curl commands in the **API Scripts** tab.
+- `script_generator` expands the variables dict and quotes `json.dumps(variables)` in the generated `data_string`.
 - Synced documentation with the current codebase across API, backend, frontend, architecture, and database guides.
 - Updated API reference to include prediction, tasks, automation, scan cancellation, cache metrics, safelists, and alternative-account link endpoints.
 - Corrected documentation examples to match sanitized auth/account payloads (no credential fields in API responses).

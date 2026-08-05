@@ -11,7 +11,8 @@ This page describes the current Flask backend architecture under the `meerkit` p
   - `meerkit/workers/download_worker.py`
   - `meerkit/workers/prediction_worker.py`
   - `meerkit/workers/automation_worker.py`
-- Scan execution entry: `meerkit/scan_worker.py`
+- Scan execution entry: `meerkit/scan_worker.py` + `get_current_followers.py`
+- Instagram access: curl-pattern API gateway (`meerkit/services/instagram_gateway.py`)
 
 ## Package Layout
 
@@ -28,7 +29,8 @@ meerkit/
 │   ├── images.py
 │   ├── predict.py
 │   ├── tasks.py
-│   └── automation.py
+│   ├── automation.py
+│   └── curl_patterns.py
 ├── services/
 │   ├── auth_service.py
 │   ├── scan_runner.py
@@ -36,6 +38,8 @@ meerkit/
 │   ├── automation_runner.py
 │   ├── automation_service.py
 │   ├── instagram_gateway.py
+│   ├── curl_pattern_service.py
+│   ├── script_generator.py
 │   ├── instagram_response_cache.py
 │   ├── instagram_api_usage.py
 │   ├── relationship_cache.py
@@ -60,6 +64,14 @@ All routes are registered in `meerkit/app.py`.
 - app user register/login/logout/me
 - Instagram account CRUD/select
 - Instagram API usage summary
+
+### Curl Patterns (`/api/curl-patterns`)
+
+- parse a pasted curl command into URL/method/cookie/header/data/variable suggestions
+- list/get/store/update/delete per-operation patterns
+- test a saved pattern against the live Instagram endpoint
+- generate a standalone Python `requests` script from a saved pattern
+- per-user field-selection preferences
 
 ### Scan + History (`/api`)
 
@@ -92,6 +104,17 @@ All routes are registered in `meerkit/app.py`.
 
 - profile image serve/cache queue endpoint
 
+## Instagram Gateway (Curl Patterns)
+
+`meerkit/services/instagram_gateway.py` is the tracked wrapper around all Instagram calls. Instead of hardcoded request logic it executes stored **curl patterns**:
+
+- Every operation maps to an `internal_name` (`fetch_user_profile_data`, `fetch_followers_list`, `fetch_following_list`, `follow_user`, `unfollow_user`).
+- `meerkit/services/curl_pattern_service.py` stores patterns in the `api_curl_patterns` table, extracts session values from them (`extract_session_from_curl_pattern()`), and rebuilds live requests (`build_request()`) with `{{session.*}}` / `{{runtime.*}}` substitution and automatic `max_id` pagination.
+- `meerkit/services/script_generator.py` renders a standalone Python `requests` script (Jinja2 template) from a saved pattern.
+- `_pattern_call_paginated()` walks multi-page follower/following lists and `_parse_user_records()` handles both REST v1 and GraphQL response shapes.
+
+See [Architecture](architecture.md) for a diagram and [API Reference](api-reference.md) for the curl-pattern endpoints.
+
 ## Worker Model
 
 - Scan runs in a background thread via `scan_runner.start_scan()`.
@@ -104,6 +127,7 @@ All routes are registered in `meerkit/app.py`.
 - Browser session stores `app_user_id` and `active_instagram_user_id`.
 - Route helper `get_active_context()` resolves app-user + Instagram-user scope.
 - Most scoped routes accept query override via `profile_id` or `instagram_user_id`.
+- Instagram session credentials (`csrftoken`, `sessionid`, `ds_user_id`) are extracted from the stored curl patterns at call time — not stored in the app user's session.
 
 ## Caching + Metrics
 
@@ -124,6 +148,7 @@ All routes are registered in `meerkit/app.py`.
 - In-progress conflict: `409`
 - Validation errors: `400`
 - Upstream/Instagram fetch failures in automation list fetch: `502`
+- Missing curl patterns: `400` with a "set up at least one curl pattern" hint (scan), or `MissingCurlPatternError` surfaced from gateway calls
 
 ## Local Run
 
