@@ -47,25 +47,27 @@ variables = {
 }
 {%- endif %}
 
-{%- if data %}
+{%- if data or variables %}
 
+{%- if data %}
 data = {
 {%- for key, value in data.items() %}
     {{ key | tojson }}: {{ value | tojson }},
 {%- endfor %}
 }
-
-data_string = "&".join(f"{k}={v}" for k, v in data.items())
 {%- endif %}
 
-{%- if http_method.lower() == "get" and not data %}
+{{ data_string_line }}
+{%- endif %}
+
+{%- if http_method.lower() == "get" and not data and not variables %}
 response = requests.get(url{% if headers %}, headers=headers{% endif %}{% if cookies %}, cookies=cookies{% endif %})
 {%- else %}
 response = requests.{{ http_method.lower() }}(
     url,
 {%- if headers %}    headers=headers,
 {%- endif %}{%- if cookies %}    cookies=cookies,
-{%- endif %}{%- if data %}    data=data_string,
+{%- endif %}{%- if data or variables %}    data=data_string,
 {%- endif %})
 {%- endif %}
 
@@ -150,15 +152,7 @@ def generate_script(
 
     data: dict[str, str] = {}
     for dk in selected_data:
-        if dk == "variables" and selected_variables and all_variables:
-            mapped: dict[str, str] = {}
-            for vk in selected_variables:
-                if vk in all_variables:
-                    v = all_variables[vk]
-                    raw = json.dumps(v) if not isinstance(v, str) else str(v)
-                    mapped[vk] = resolve_value(raw, session_values, runtime_values)
-            data["variables"] = quote(json.dumps(mapped))
-        elif dk in all_data:
+        if dk != "variables" and dk in all_data:
             data[dk] = resolve_value(all_data[dk], session_values, runtime_values)
 
     variables: dict[str, str] = {}
@@ -169,6 +163,18 @@ def generate_script(
                 raw = json.dumps(v) if not isinstance(v, str) else str(v)
                 variables[vk] = resolve_value(raw, session_values, runtime_values)
 
+    if data and variables:
+        data_string_line = (
+            "data_string = \"&\".join(f\"{k}={v}\" for k, v in data.items())\n"
+            "data_string += f\"&variables={quote(json.dumps(variables))}\""
+        )
+    elif data:
+        data_string_line = "data_string = \"&\".join(f\"{k}={v}\" for k, v in data.items())"
+    elif variables:
+        data_string_line = "data_string = f\"variables={quote(json.dumps(variables))}\""
+    else:
+        data_string_line = ""
+
     return _TEMPLATE.render(
         internal_name=internal_name,
         display_name=display_name,
@@ -178,4 +184,5 @@ def generate_script(
         cookies=cookies,
         data=data,
         variables=variables,
+        data_string_line=data_string_line,
     )
