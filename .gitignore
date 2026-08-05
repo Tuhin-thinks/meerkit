@@ -220,3 +220,4 @@ followers_data*
 tests/outputs/*
 logs/
 tests/*.env
+.dump

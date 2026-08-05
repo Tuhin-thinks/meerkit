@@ -382,6 +382,15 @@ CREATE INDEX IF NOT EXISTS idx_api_curl_patterns_internal_name
 ON api_curl_patterns (app_user_id, internal_name);
 """
 
+USER_PREFERENCES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS user_preferences (
+    app_user_id      TEXT NOT NULL,
+    preference_key   TEXT NOT NULL,
+    preference_value TEXT NOT NULL,
+    updated_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (app_user_id, preference_key)
+);"""
+
 AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_automation_primary_accounts_scope
 ON automation_primary_accounts (
@@ -425,4 +434,5 @@ schema_collection = {
     "idx_automation_primary_accounts_scope": AUTOMATION_PRIMARY_ACCOUNTS_SCOPE_INDEX,
     "api_curl_patterns": API_CURL_PATTERNS_SCHEMA,
     "idx_api_curl_patterns_internal_name": API_CURL_PATTERNS_INTERNAL_NAME_INDEX,
+    "user_preferences": USER_PREFERENCES_SCHEMA,
 }

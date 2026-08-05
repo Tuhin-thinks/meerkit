@@ -47,8 +47,4 @@ export interface PatternTestResult {
   success: boolean
 }
 
-export interface RefreshTokensResult {
-  fb_dtsg: string
-  lsd: string
-  jazoest: string
-}
+

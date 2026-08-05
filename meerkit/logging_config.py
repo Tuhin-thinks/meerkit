@@ -124,6 +124,38 @@ class JsonFormatter(logging.Formatter):
         return value
 
 
+class ConsoleFormatter(logging.Formatter):
+    _LEVEL_COLORS = {
+        "DEBUG": "\033[2m",
+        "INFO": "\033[36m",
+        "WARNING": "\033[33m",
+        "ERROR": "\033[31m",
+        "CRITICAL": "\033[41m\033[37m",
+    }
+    _RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        ts = datetime.fromtimestamp(record.created).strftime("%H:%M:%S")
+        color = self._LEVEL_COLORS.get(record.levelname, "")
+        level = f"{record.levelname:<8}"
+
+        loc = f"{record.name}.{record.funcName}"
+        indent = "  " if record.levelname in ("DEBUG", "INFO") else ""
+
+        parts = [
+            f"\033[2m{ts}\033[0m",
+            f"{color}{level}{self._RESET}",
+            f"\033[2m{loc}\033[0m",
+            f"{indent}{record.getMessage()}",
+        ]
+
+        exc = record.exc_info
+        if exc and exc[0]:
+            parts.append(f"\n{self.formatException(exc)}")
+
+        return " ".join(parts)
+
+
 def _build_handlers(
     *,
     log_file_path: str,
@@ -131,13 +163,14 @@ def _build_handlers(
     backup_count: int,
     redact_sensitive_fields: bool,
 ) -> list[logging.Handler]:
-    formatter = JsonFormatter(redact_sensitive_fields=redact_sensitive_fields)
+    json_formatter = JsonFormatter(redact_sensitive_fields=redact_sensitive_fields)
+    console_formatter = ConsoleFormatter()
     context_filter = ContextFilter()
 
     handlers: list[logging.Handler] = []
 
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(console_formatter)
     console_handler.addFilter(context_filter)
     handlers.append(console_handler)
 
@@ -149,7 +182,7 @@ def _build_handlers(
         backupCount=max(1, int(backup_count)),
         encoding="utf-8",
     )
-    rotating_file_handler.setFormatter(formatter)
+    rotating_file_handler.setFormatter(json_formatter)
     rotating_file_handler.addFilter(context_filter)
     handlers.append(rotating_file_handler)
 

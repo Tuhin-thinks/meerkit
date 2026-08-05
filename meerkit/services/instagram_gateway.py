@@ -1,15 +1,24 @@
+import json
+import logging
 from collections.abc import Callable
 from typing import TypeVar
 
 import insta_interface as ii
+import requests
 from meerkit.config import LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED
 from meerkit.services import user_details_cache
+from meerkit.services.curl_pattern_service import (
+    build_request,
+    get_pattern,
+)
+from meerkit.services.exceptions import MissingCurlPatternError
 from meerkit.services.instagram_api_usage import instagram_api_usage_tracker
 from meerkit.services.instagram_response_cache import (
     load_gateway_response,
     store_gateway_response,
 )
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 _READ_CACHE_CATEGORIES = {
@@ -17,6 +26,17 @@ _READ_CACHE_CATEGORIES = {
     "user_data_fetch",
     "followers_discovery",
     "following_discovery",
+}
+
+_INTERNAL_NAME_MAP: dict[str, str] = {
+    "get_user_data": "fetch_user_profile_data",
+    "get_target_user_data": "fetch_user_profile_data",
+    "get_target_followers_v2": "fetch_followers_list",
+    "get_target_following_v2": "fetch_following_list",
+    "get_current_followers_v2": "fetch_followers_list",
+    "get_current_following_v2": "fetch_following_list",
+    "follow_user_by_id": "follow_user",
+    "unfollow_user_by_id": "unfollow_user",
 }
 
 
@@ -56,6 +76,77 @@ def _deserialize_follower_records(payload: object) -> list[ii.FollowerUserRecord
 
 class InstagramGateway:
     """Thin tracked wrapper around Instagram interface calls used by meerkit services."""
+
+    def _get_session_values(self, profile: ii.InstagramProfile) -> dict:
+        return {
+            "csrftoken": profile.csrf_token,
+            "sessionid": profile.session_id,
+            "ds_user_id": profile.user_id,
+        }
+
+    def _get_runtime_values(self, **kwargs) -> dict:
+        return {k: v for k, v in kwargs.items() if v is not None}
+
+    def _pattern_call(
+        self,
+        *,
+        app_user_id: str,
+        internal_name: str,
+        profile: ii.InstagramProfile,
+        runtime_values: dict | None = None,
+    ) -> dict:
+        pattern = get_pattern(app_user_id, internal_name)
+        if not pattern:
+            raise MissingCurlPatternError(
+                internal_name=internal_name,
+                display_name=internal_name.replace("_", " ").title(),
+            )
+
+        session_vals = self._get_session_values(profile)
+        url, headers, cookies, data_string = build_request(
+            app_user_id=app_user_id,
+            internal_name=internal_name,
+            session_values=session_vals,
+            runtime_values=runtime_values or {},
+        )
+        http_method = str(pattern.get("http_method", "POST"))
+
+        try:
+            if http_method.upper() == "GET":
+                resp = requests.get(url, headers=headers, cookies=cookies, timeout=30)
+            else:
+                resp = requests.post(
+                    url, headers=headers, cookies=cookies, data=data_string, timeout=30
+                )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            logger.exception(
+                "Pattern call failed for %s",
+                internal_name,
+                extra={
+                    "internal_name": internal_name,
+                    "status_code": getattr(exc.response, "status_code", None),
+                    "response_text": getattr(exc.response, "text", "")[:200] if hasattr(exc.response, "text") else None,
+                },
+            )
+            raise
+        except json.JSONDecodeError as exc:
+            logger.exception(
+                "Pattern call returned non-JSON response for %s (status %s)",
+                internal_name,
+                resp.status_code,
+                extra={
+                    "internal_name": internal_name,
+                    "status_code": resp.status_code,
+                    "response_text": resp.text[:500],
+                },
+            )
+            raise MissingCurlPatternError(
+                internal_name=internal_name,
+                display_name=internal_name.replace("_", " ").title(),
+                message=f"Instagram returned {resp.status_code} with non-JSON body (session may be expired)",
+            ) from exc
 
     def _tracked(
         self,
@@ -116,7 +207,6 @@ class InstagramGateway:
                     payload=serialize_for_cache(result),
                 )
             except Exception:
-                # Cache writes must never break successful API flows.
                 pass
 
         return result
@@ -197,13 +287,24 @@ class InstagramGateway:
                 )
                 return cached
 
+        def _execute() -> dict[str, object]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_user_profile_data",
+                profile=profile,
+            )
+            user_data = raw.get("data", {}).get("user") or raw.get("user") or raw
+            if isinstance(user_data, dict):
+                return user_data
+            return raw
+
         result: dict[str, object] = instagram_api_usage_tracker.track_call(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="user_data_fetch",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_user_data(profile=profile),
+            execute=_execute,
         )
         if LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED:
             try:
@@ -223,13 +324,25 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
     ) -> dict[str, object]:
-        result = self._tracked(
+        def _execute() -> dict[str, object]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_user_profile_data",
+                profile=profile,
+                runtime_values={"target_user_id": target_user_id},
+            )
+            user_data = raw.get("data", {}).get("user") or raw.get("user") or raw
+            if isinstance(user_data, dict):
+                return user_data
+            return raw
+
+        result: dict[str, object] = self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="user_data_fetch",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_target_user_data(profile, target_user_id),
+            execute=_execute,
             cache_key_parts=self._summary_cache_key(
                 operation="get_target_user_data",
                 target_user_id=target_user_id,
@@ -240,7 +353,6 @@ class InstagramGateway:
         )
         if LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED:
             try:
-                # Keep this write for consumers that still read this legacy cache path.
                 user_details_cache.save_target(
                     app_user_id, instagram_user_id, target_user_id, result
                 )
@@ -260,17 +372,42 @@ class InstagramGateway:
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
+        def _execute() -> list[ii.FollowerUserRecord]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_followers_list",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": target_user_id,
+                    "first": fetch_at_max,
+                },
+            )
+            users = raw.get("data", {}).get("user", {}).get("edge_followed_by", {}).get("edges", [])
+            records: list[ii.FollowerUserRecord] = []
+            for edge in users:
+                node = edge.get("node", {})
+                records.append(
+                    ii.FollowerUserRecord(
+                        pk_id=str(node.get("id", "")),
+                        id=str(node.get("id", "")),
+                        username=node.get("username", ""),
+                        full_name=node.get("full_name", ""),
+                        is_private=bool(node.get("is_private", False)),
+                        profile_pic_url=node.get("profile_pic_url") or "",
+                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
+                        profile_pic_id=node.get("profile_pic_id") or None,
+                        is_verified=bool(node.get("is_verified", False)),
+                    )
+                )
+            return records
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="followers_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_target_followers_v2(
-                profile,
-                target_user_id,
-                fetch_at_max=fetch_at_max,
-            ),
+            execute=_execute,
             cache_key_parts=self._relationship_cache_key(
                 operation="get_target_followers_v2",
                 target_user_id=target_user_id,
@@ -293,17 +430,42 @@ class InstagramGateway:
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
+        def _execute() -> list[ii.FollowerUserRecord]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_following_list",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": target_user_id,
+                    "first": fetch_at_max,
+                },
+            )
+            users = raw.get("data", {}).get("user", {}).get("edge_follow", {}).get("edges", [])
+            records: list[ii.FollowerUserRecord] = []
+            for edge in users:
+                node = edge.get("node", {})
+                records.append(
+                    ii.FollowerUserRecord(
+                        pk_id=str(node.get("id", "")),
+                        id=str(node.get("id", "")),
+                        username=node.get("username", ""),
+                        full_name=node.get("full_name", ""),
+                        is_private=bool(node.get("is_private", False)),
+                        profile_pic_url=node.get("profile_pic_url") or "",
+                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
+                        profile_pic_id=node.get("profile_pic_id") or None,
+                        is_verified=bool(node.get("is_verified", False)),
+                    )
+                )
+            return records
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="following_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_target_following_v2(
-                profile,
-                target_user_id,
-                fetch_at_max=fetch_at_max,
-            ),
+            execute=_execute,
             cache_key_parts=self._relationship_cache_key(
                 operation="get_target_following_v2",
                 target_user_id=target_user_id,
@@ -325,17 +487,42 @@ class InstagramGateway:
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
+        def _execute() -> list[ii.FollowerUserRecord]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_followers_list",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": profile.user_id,
+                    "first": fetch_at_max,
+                },
+            )
+            users = raw.get("data", {}).get("user", {}).get("edge_followed_by", {}).get("edges", [])
+            records: list[ii.FollowerUserRecord] = []
+            for edge in users:
+                node = edge.get("node", {})
+                records.append(
+                    ii.FollowerUserRecord(
+                        pk_id=str(node.get("id", "")),
+                        id=str(node.get("id", "")),
+                        username=node.get("username", ""),
+                        full_name=node.get("full_name", ""),
+                        is_private=bool(node.get("is_private", False)),
+                        profile_pic_url=node.get("profile_pic_url") or "",
+                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
+                        profile_pic_id=node.get("profile_pic_id") or None,
+                        is_verified=bool(node.get("is_verified", False)),
+                    )
+                )
+            return records
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="followers_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_current_followers_v2(
-                profile=profile,
-                store_data=False,
-                fetch_at_max=fetch_at_max,
-            ),
+            execute=_execute,
             cache_key_parts=self._relationship_cache_key(
                 operation="get_current_followers_v2",
                 target_user_id=profile.user_id,
@@ -357,17 +544,42 @@ class InstagramGateway:
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
+        def _execute() -> list[ii.FollowerUserRecord]:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="fetch_following_list",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": profile.user_id,
+                    "first": fetch_at_max,
+                },
+            )
+            users = raw.get("data", {}).get("user", {}).get("edge_follow", {}).get("edges", [])
+            records: list[ii.FollowerUserRecord] = []
+            for edge in users:
+                node = edge.get("node", {})
+                records.append(
+                    ii.FollowerUserRecord(
+                        pk_id=str(node.get("id", "")),
+                        id=str(node.get("id", "")),
+                        username=node.get("username", ""),
+                        full_name=node.get("full_name", ""),
+                        is_private=bool(node.get("is_private", False)),
+                        profile_pic_url=node.get("profile_pic_url") or "",
+                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
+                        profile_pic_id=node.get("profile_pic_id") or None,
+                        is_verified=bool(node.get("is_verified", False)),
+                    )
+                )
+            return records
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="following_discovery",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.get_current_following_v2(
-                profile=profile,
-                store_data=False,
-                fetch_at_max=fetch_at_max,
-            ),
+            execute=_execute,
             cache_key_parts=self._relationship_cache_key(
                 operation="get_current_following_v2",
                 target_user_id=profile.user_id,
@@ -389,15 +601,27 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
     ) -> int:
+        def _execute() -> int:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="follow_user",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": target_user_id,
+                    "username": target_username,
+                },
+            )
+            if raw.get("status") == "ok":
+                return 200
+            return 400
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="action_follow",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.follow_user_by_id(
-                target_user_id, target_username, profile
-            ),
+            execute=_execute,
         )
 
     def unfollow_user_by_id(
@@ -411,15 +635,27 @@ class InstagramGateway:
         caller_service: str,
         caller_method: str,
     ) -> int:
+        def _execute() -> int:
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name="unfollow_user",
+                profile=profile,
+                runtime_values={
+                    "target_user_id": target_user_id,
+                    "username": target_username,
+                },
+            )
+            if raw.get("status") == "ok":
+                return 200
+            return 400
+
         return self._tracked(
             app_user_id=app_user_id,
             instagram_user_id=instagram_user_id,
             category="action_unfollow",
             caller_service=caller_service,
             caller_method=caller_method,
-            execute=lambda: ii.unfollow_user_by_id(
-                target_user_id, target_username, profile
-            ),
+            execute=_execute,
         )
 
     def resolve_target_user_pk_for_automation(

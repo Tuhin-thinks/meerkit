@@ -121,6 +121,7 @@ def create_app() -> Flask:
     from meerkit.routes.predict import bp as predict_bp
     from meerkit.routes.scan import bp as scan_bp
     from meerkit.routes.tasks import bp as tasks_bp
+    from meerkit.routes.curl_patterns import bp as curl_patterns_bp
     from meerkit.workers import automation_worker, download_worker, prediction_worker
 
     is_debug = (
@@ -141,6 +142,7 @@ def create_app() -> Flask:
     app.register_blueprint(predict_bp)
     app.register_blueprint(tasks_bp)
     app.register_blueprint(automation_bp)
+    app.register_blueprint(curl_patterns_bp)
 
     return app
 

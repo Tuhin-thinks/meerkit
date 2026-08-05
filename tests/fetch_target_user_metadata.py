@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
@@ -56,6 +57,7 @@ def write_metadata_outputs(profile) -> tuple[Path, Path]:
     from insta_interface import get_target_user_data
 
     target_user_id, target_username = resolve_target_user_id(profile)
+    print(f"{json.dumps(asdict(profile), indent=2)}")
     metadata = get_target_user_data(profile, target_user_id)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
