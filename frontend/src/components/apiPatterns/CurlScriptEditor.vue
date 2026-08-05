@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onUnmounted, watch } from "vue";
 import {
   parseCurl,
   storeCurlPattern,
@@ -53,6 +53,7 @@ const selectedVariables = ref<string[]>([]);
 
 const preferenceKey = `curl_fields:${props.internalName}`;
 let _prefDebounce: ReturnType<typeof setTimeout> | undefined;
+let _loadingSaved = false;
 
 onUnmounted(() => {
   if (_prefDebounce) clearTimeout(_prefDebounce);
@@ -62,6 +63,12 @@ function _debouncedSave() {
   if (_prefDebounce) clearTimeout(_prefDebounce);
   _prefDebounce = setTimeout(savePreferences, 300);
 }
+
+watch(curlText, (newVal, oldVal) => {
+  if (!_loadingSaved && newVal !== oldVal) {
+    hasUnsavedChanges.value = true;
+  }
+});
 
 function _selectionSnapshot(): FieldPreferences {
   return {
@@ -99,6 +106,7 @@ async function savePreferences() {
 }
 
 async function loadSaved() {
+  _loadingSaved = true;
   isLoading.value = true;
   try {
     const [pattern, prefs] = await Promise.all([
@@ -127,6 +135,7 @@ async function loadSaved() {
     // Pattern not yet saved or preferences not yet set
   } finally {
     isLoading.value = false;
+    _loadingSaved = false;
   }
 }
 
