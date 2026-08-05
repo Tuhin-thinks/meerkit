@@ -120,11 +120,14 @@ def _refresh_target_profile_image_cache_if_changed(
     )
 
 
-def _build_profile(credentials: dict) -> ii.InstagramProfile:
+def _build_profile(app_user_id: str) -> ii.InstagramProfile:
+    """Build an InstagramProfile by extracting session credentials from stored curl patterns."""
+    from meerkit.services.curl_pattern_service import extract_session_from_curl_pattern
+    session_vals = extract_session_from_curl_pattern(app_user_id)
     return ii.InstagramProfile(
-        csrf_token=credentials["csrf_token"],
-        session_id=credentials["session_id"],
-        user_id=credentials["user_id"],
+        csrf_token=session_vals.get("csrftoken", ""),
+        session_id=session_vals.get("sessionid", ""),
+        user_id=session_vals.get("ds_user_id", ""),
     )
 
 
@@ -982,7 +985,7 @@ def request_followback_prediction(
             error_code="target_identifier_required",
         )
 
-    profile = _build_profile(instagram_user)
+    profile = _build_profile(app_user_id)
     target_profile_id = user_id or instagram_gateway.resolve_target_user_pk(
         app_user_id=app_user_id,
         instagram_user_id=instagram_user["instagram_user_id"],
@@ -1130,10 +1133,10 @@ def refresh_followback_prediction(
             prediction_id=prediction_id,
         )
 
-    profile = _build_profile(instagram_user)
+    app_user_id = prediction["app_user_id"]
+    profile = _build_profile(app_user_id)
     target_profile_id = prediction["target_profile_id"]
     reference_profile_id = prediction["reference_profile_id"]
-    app_user_id = prediction["app_user_id"]
     previous_target_metadata = user_details_cache.load_target(
         app_user_id,
         reference_profile_id,
@@ -1373,7 +1376,7 @@ def get_target_relationship_cache_status(
 ) -> dict[str, dict[str, object]]:
     reference_profile_id = instagram_user["instagram_user_id"]
     if sync_counts:
-        profile = _build_profile(instagram_user)
+        profile = _build_profile(app_user_id)
         previous_target_metadata = user_details_cache.load_target(
             app_user_id,
             reference_profile_id,

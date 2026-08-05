@@ -3,7 +3,6 @@ from typing import Any, cast
 
 from flask import Blueprint, jsonify, request
 
-import insta_interface as ii
 from meerkit.config import (
     ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS,
     HISTORY_ALL_TIME_DAYS,
@@ -64,12 +63,7 @@ def _fresh_db_is_deactivated(target_profile: dict[str, Any]) -> bool | None:
     return bool(status_value)
 
 
-def _build_profile(credentials: dict[str, Any]) -> ii.InstagramProfile:
-    return ii.InstagramProfile(
-        csrf_token=str(credentials["csrf_token"]),
-        session_id=str(credentials["session_id"]),
-        user_id=str(credentials["user_id"]),
-    )
+from meerkit.services.account_handler import _build_profile
 
 
 def _collect_target_profile_ids(diff: dict[str, Any], list_keys: set[str]) -> set[str]:
@@ -332,7 +326,7 @@ def refresh_diff_accessibility(diff_id: str):
 
     target_profile_ids = _collect_target_profile_ids(diff, list_keys)
     if target_profile_ids:
-        profile = _build_profile(instagram_user)
+        profile = _build_profile(app_user_id)
         deactivated_map = live_deactivated_map(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,

@@ -6,6 +6,7 @@ from flask import Blueprint, jsonify, request
 from meerkit.routes import get_active_context
 from meerkit.services.curl_pattern_service import (
     delete_pattern,
+    extract_session_from_curl_pattern,
     get_pattern,
     get_preference,
     list_patterns,
@@ -145,13 +146,9 @@ def handle_delete(internal_name: str):
 
 @bp.post("/<internal_name>/test")
 def handle_test(internal_name: str):
-    app_user_id, instagram_user = _get_app_and_ig_user()
+    app_user_id, _ = _get_app_and_ig_user()
     runtime_values = request.get_json(silent=True) or {}
-    session_values = {
-        "csrftoken": instagram_user.get("csrf_token", ""),
-        "sessionid": instagram_user.get("session_id", ""),
-        "ds_user_id": instagram_user.get("user_id", ""),
-    }
+    session_values = extract_session_from_curl_pattern(app_user_id, internal_name)
 
     result = test_pattern(
         app_user_id=app_user_id,
@@ -164,16 +161,12 @@ def handle_test(internal_name: str):
 
 @bp.post("/<internal_name>/generate")
 def handle_generate(internal_name: str):
-    app_user_id, instagram_user = _get_app_and_ig_user()
+    app_user_id, _ = _get_app_and_ig_user()
     pattern = get_pattern(app_user_id, internal_name)
     if not pattern:
         return jsonify({"error": "Pattern not found", "code": "not_found"}), 404
 
-    session_values: dict[str, str] = {
-        "csrftoken": instagram_user.get("csrf_token", ""),
-        "sessionid": instagram_user.get("session_id", ""),
-        "ds_user_id": instagram_user.get("user_id", ""),
-    }
+    session_values = extract_session_from_curl_pattern(app_user_id, internal_name)
 
     raw_url, raw_headers, raw_cookies, raw_data_str = _curl_parse(
         str(pattern["curl_command"])
@@ -183,13 +176,13 @@ def handle_generate(internal_name: str):
 
     runtime_keys = collect_runtime_keys(raw_cookies) | collect_runtime_keys(raw_headers) | collect_runtime_keys(raw_data) | collect_runtime_keys(raw_url) | collect_runtime_keys(raw_variables or {})
 
-    user_id = instagram_user.get("user_id", "")
+    user_id = session_values.get("ds_user_id", "")
     runtime_values: dict[str, object] = {}
     for rk in runtime_keys:
         if rk in ("id", "target_user_id", "ds_user_id"):
             runtime_values[rk] = user_id
         elif rk == "username":
-            runtime_values[rk] = instagram_user.get("username", user_id)
+            runtime_values[rk] = user_id
         elif rk == "enable_integrity_filters":
             runtime_values[rk] = True
         elif rk == "first":

@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 from meerkit.config import profile_data_dir
 from meerkit.routes import get_active_context
 from meerkit.services import persistence, scan_runner
+from meerkit.services.curl_pattern_service import extract_session_from_curl_pattern
 
 bp = Blueprint("scan", __name__, url_prefix="/api")
 
@@ -21,12 +22,20 @@ def trigger_scan():
 
     instagram_user = cast(dict, context)
 
+    try:
+        session_vals = extract_session_from_curl_pattern(app_user_id)
+    except Exception:
+        return jsonify({"error": "No API patterns configured. Please set up at least one curl pattern first."}), 400
+
     data_dir = profile_data_dir(app_user_id, instagram_user["instagram_user_id"])
     started = scan_runner.start_scan(
         app_user_id=app_user_id,
         profile_id=instagram_user["instagram_user_id"],
         data_dir=data_dir,
-        credentials=instagram_user,
+        credentials={
+            "csrf_token": session_vals.get("csrftoken", ""),
+            "session_id": session_vals.get("sessionid", ""),
+        },
         target_user_id=instagram_user["user_id"],
     )
     if not started:

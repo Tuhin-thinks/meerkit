@@ -185,6 +185,47 @@ def get_pattern(app_user_id: str, internal_name: str) -> dict | None:
         return _row_to_dict(cursor.fetchone())
 
 
+_SESSION_COOKIE_MAP = {
+    "csrftoken": "csrftoken",
+    "sessionid": "sessionid",
+    "ds_user_id": "ds_user_id",
+}
+
+
+def extract_session_from_curl_pattern(app_user_id: str, internal_name: str = "fetch_user_profile_data") -> dict:
+    """Extract session values (csrftoken, sessionid, ds_user_id) from a stored curl pattern.
+
+    Parses the stored curl command and extracts cookies/headers that map to session fields.
+    Falls back to other patterns if the requested one doesn't exist.
+    """
+    pattern = get_pattern(app_user_id, internal_name)
+    if not pattern:
+        alternatives = ["follow_user", "unfollow_user", "fetch_followers_list", "fetch_following_list"]
+        for alt in alternatives:
+            if alt != internal_name:
+                pattern = get_pattern(app_user_id, alt)
+                if pattern:
+                    break
+    if not pattern:
+        raise MissingCurlPatternError(
+            internal_name=internal_name,
+            display_name=internal_name,
+        )
+
+    curl_command = str(pattern["curl_command"])
+    _, raw_headers, raw_cookies, _ = curl_to_python.parse_curl_command(curl_command)
+
+    session_values: dict[str, str] = {}
+    for cookie_key, session_key in _SESSION_COOKIE_MAP.items():
+        if cookie_key in raw_cookies:
+            session_values[session_key] = raw_cookies[cookie_key]
+
+    if "x-csrftoken" in raw_headers and "csrftoken" not in session_values:
+        session_values["csrftoken"] = raw_headers["x-csrftoken"]
+
+    return session_values
+
+
 def list_patterns(app_user_id: str) -> list[dict]:
     db_handler = get_worker_db()
     with db_handler as conn:
