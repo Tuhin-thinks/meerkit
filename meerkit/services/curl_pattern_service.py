@@ -300,6 +300,16 @@ def build_request(
 
     url = resolve_value(str(pattern["url"]), session_values, runtime_values)
 
+    # Replace hardcoded user ID in URL path with target_user_id if provided
+    target_user_id = runtime_values.get("target_user_id")
+    if target_user_id:
+        # Match /friendships/{numeric_id}/ pattern in URL path
+        url = re.sub(
+            r"(/friendships/)(\d+)(/)",
+            rf"\g<1>{target_user_id}\3",
+            url,
+        )
+
     # Append max_id to URL if present in runtime_values and not already in URL
     max_id = runtime_values.get("max_id")
     if max_id is not None and "max_id" not in url:
