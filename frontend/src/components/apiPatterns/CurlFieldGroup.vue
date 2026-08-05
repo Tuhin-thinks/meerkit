@@ -57,7 +57,7 @@ const reasonColor: Record<string, string> = {
         </button>
       </div>
     </div>
-    <div class="flex flex-wrap gap-1.5">
+    <div class="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto">
       <label
         v-for="field in fields"
         :key="field.key"

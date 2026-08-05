@@ -299,6 +299,14 @@ const allFieldsSelected = computed(() => {
     && fields.variables.length > 0 && fields.variables.every((f) => selectedVariables.value.includes(f.key));
 });
 
+function formatResponse(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
+}
+
 loadSaved();
 </script>
 
@@ -445,7 +453,7 @@ loadSaved();
           {{ testResult.status_code ?? "Error" }}
           <span class="text-slate-500">({{ testResult.elapsed_ms }}ms)</span>
         </p>
-        <pre class="mt-1 text-slate-400 font-mono text-[10px] max-h-32 overflow-auto whitespace-pre-wrap">{{ testResult.response_text }}</pre>
+        <pre class="mt-1 text-slate-400 font-mono text-[10px] max-h-64 overflow-auto whitespace-pre-wrap border border-white/[0.06] rounded-lg p-2 bg-black/20">{{ formatResponse(testResult.response_text) }}</pre>
       </div>
       <p v-if="testError" class="text-xs text-rose-400">{{ testError }}</p>
     </div>
