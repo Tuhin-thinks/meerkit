@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request, session
 
 from meerkit.routes.error_mapping import map_exception_to_response
-from meerkit.services import auth_service, db_service
+from meerkit.services import auth_service, curl_pattern_service, db_service
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
@@ -205,6 +205,25 @@ def get_instagram_user_detail(instagram_user_id: str):
     return jsonify(_sanitize_instagram_user_payload(instagram_user))
 
 
+VALID_OPERATIONS = {
+    "fetch_user_profile_data",
+    "follow_user",
+    "unfollow_user",
+    "fetch_followers_list",
+    "fetch_following_list",
+    "search_user",
+}
+
+OPERATION_DISPLAY_NAMES = {
+    "fetch_user_profile_data": "Fetch Profile Data",
+    "follow_user": "Follow User",
+    "unfollow_user": "Unfollow User",
+    "fetch_followers_list": "Fetch Followers List",
+    "fetch_following_list": "Fetch Following List",
+    "search_user": "Search User",
+}
+
+
 @bp.patch("/instagram-users/<instagram_user_id>")
 def patch_instagram_user(instagram_user_id: str):
     """Update instagram user display name and/or cookie-derived credentials."""
@@ -216,11 +235,52 @@ def patch_instagram_user(instagram_user_id: str):
     payload = request.get_json(silent=True) or {}
     display_name = payload.get("display_name")
     cookie_string = payload.get("cookie_string")
+    curl_command = payload.get("curl_command")
+    operation = payload.get("operation")
 
     if display_name is not None and not isinstance(display_name, str):
         return jsonify({"error": "display_name must be a string"}), 400
     if cookie_string is not None and not isinstance(cookie_string, str):
         return jsonify({"error": "cookie_string must be a string"}), 400
+    if curl_command is not None and not isinstance(curl_command, str):
+        return jsonify({"error": "curl_command must be a string"}), 400
+    if operation is not None and not isinstance(operation, str):
+        return jsonify({"error": "operation must be a string"}), 400
+
+    if operation and operation not in VALID_OPERATIONS:
+        return jsonify({
+            "error": f"Invalid operation. Must be one of: {', '.join(sorted(VALID_OPERATIONS))}"
+        }), 400
+
+    curl_pattern_stored = False
+
+    if curl_command and operation:
+        try:
+            parsed = curl_pattern_service.parse_curl(curl_command)
+            display_name_label = OPERATION_DISPLAY_NAMES.get(operation, operation)
+            curl_pattern_service.store_pattern(
+                app_user_id=app_user_id,
+                internal_name=operation,
+                display_name=display_name_label,
+                curl_command=curl_command,
+                url=parsed["url"],
+                http_method=parsed["http_method"],
+                selected_cookies=[
+                    f["key"] for f in parsed["suggestions"]["cookies"] if f["selected"]
+                ],
+                selected_headers=[
+                    f["key"] for f in parsed["suggestions"]["headers"] if f["selected"]
+                ],
+                selected_data=[
+                    f["key"] for f in parsed["suggestions"]["data"] if f["selected"]
+                ],
+                selected_variables=[
+                    f["key"] for f in parsed["suggestions"]["variables"] if f["selected"]
+                ],
+            )
+            curl_pattern_stored = True
+        except Exception as exc:
+            return _error_response(exc)
 
     try:
         instagram_user = auth_service.update_instagram_user(
@@ -228,6 +288,7 @@ def patch_instagram_user(instagram_user_id: str):
             instagram_user_id=instagram_user_id,
             display_name=display_name,
             cookie_string=cookie_string,
+            curl_command=curl_command if not curl_pattern_stored else None,
         )
     except Exception as exc:
         return _error_response(exc)
@@ -235,13 +296,17 @@ def patch_instagram_user(instagram_user_id: str):
     if not instagram_user:
         return jsonify({"error": "Instagram user not found"}), 404
 
+    message = "Instagram account updated"
+    if curl_pattern_stored:
+        message = f"{OPERATION_DISPLAY_NAMES.get(operation, operation)} curl pattern stored"
+
     return jsonify(
         {
             "instagram_user": _sanitize_instagram_user_payload(instagram_user),
             "me": _sanitize_me_payload(
                 auth_service.build_me_payload(app_user_id, app_user_name)
             ),
-            "message": "Instagram account updated",
+            "message": message,
         }
     )
 

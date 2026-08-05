@@ -193,7 +193,15 @@ def sanitize_instagram_users(users: list[dict]) -> list[dict]:
 
 
 def _safe_fetch_instagram_username(
-    app_user_id: str, csrf_token: str, session_id: str, user_id: str
+    app_user_id: str,
+    csrf_token: str,
+    session_id: str,
+    user_id: str,
+    fb_dtsg: str = "",
+    jazoest: str = "",
+    av: str = "",
+    extra_cookies: dict[str, str] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> str | None:
     """Fetch username from Instagram for friendlier first-time profile naming."""
     try:
@@ -201,6 +209,11 @@ def _safe_fetch_instagram_username(
             csrf_token=csrf_token,
             session_id=session_id,
             user_id=user_id,
+            fb_dtsg=fb_dtsg,
+            jazoest=jazoest,
+            av=av,
+            extra_cookies=extra_cookies,
+            extra_headers=extra_headers,
         )
         user_data = instagram_gateway.get_user_data(
             app_user_id=app_user_id,
@@ -236,14 +249,57 @@ def _parse_cookie_string(cookie_string: str) -> dict[str, str]:
             continue
         cookies[normalized_key] = value.strip()
     return cookies
+def extract_session_from_curl(curl_command: str) -> dict:
+    from curl_to_python import parse_curl_command, parse_data, build_request_components
 
+    curl_url, curl_headers, curl_cookies, data_str = parse_curl_command(curl_command)
+    if not data_str:
+        raise InvalidCookieStringError(
+            "curl command must contain --data-raw with form data",
+            error_code="curl_missing_data",
+        )
 
+    parsed_data = parse_data(data_str)
+    kept, _junk, _variables = build_request_components(parsed_data)
+
+    csrf_token = (
+        curl_cookies.get("csrftoken") or curl_headers.get("x-csrftoken") or ""
+    ).strip()
+    session_id = (curl_cookies.get("sessionid") or "").strip()
+    user_id = (
+        curl_cookies.get("ds_user_id")
+        or curl_cookies.get("user_id")
+        or curl_cookies.get("userid")
+        or ""
+    ).strip()
+
+    if not session_id or not user_id:
+        raise InvalidCookieStringError(
+            "curl command cookies must include sessionid and ds_user_id",
+            error_code="curl_missing_session",
+        )
+
+    return {
+        "csrf_token": csrf_token,
+        "session_id": session_id,
+        "user_id": user_id,
+        "fb_dtsg": kept.get("fb_dtsg", ""),
+        "jazoest": kept.get("jazoest", ""),
+        "av": kept.get("av", ""),
+        "doc_id": kept.get("doc_id", ""),
+        "relay_variables": _variables if _variables else None,
+        "extra_cookies": curl_cookies if curl_cookies else None,
+        "extra_headers": curl_headers if curl_headers else None,
+    }
 def add_instagram_user(
     app_user_id: str,
     name: str,
     csrf_token: str,
     session_id: str,
     user_id: str,
+    fb_dtsg: str = "",
+    jazoest: str = "",
+    av: str = "",
 ) -> dict:
     """Create an instagram user record with mandatory credentials."""
     if not csrf_token or not session_id or not user_id:
@@ -259,6 +315,9 @@ def add_instagram_user(
         csrf_token=csrf_token,
         session_id=session_id,
         user_id=user_id,
+        fb_dtsg=fb_dtsg,
+        jazoest=jazoest,
+        av=av,
     )
     now_iso = datetime.now().isoformat()
     instagram_user_id = user_id
@@ -269,6 +328,9 @@ def add_instagram_user(
         "csrf_token": csrf_token,
         "session_id": session_id,
         "user_id": user_id,
+        "fb_dtsg": fb_dtsg,
+        "jazoest": jazoest,
+        "av": av,
         "csrf_token_added_at": now_iso,
         "session_id_added_at": now_iso,
         "created_at": now_iso,
@@ -291,6 +353,7 @@ def update_instagram_user(
     instagram_user_id: str,
     display_name: str | None = None,
     cookie_string: str | None = None,
+    curl_command: str | None = None,
 ) -> dict | None:
     """Update instagram user display name and/or credentials from a cookie string."""
     instagram_users = get_instagram_users(app_user_id)
@@ -361,6 +424,27 @@ def update_instagram_user(
                 app_user_id=app_user_id,
                 instagram_user_id=instagram_user_id,
             )
+
+        target_user["username"] = refreshed_username
+        if display_name is None:
+            target_user["name"] = refreshed_username
+
+    if curl_command is not None:
+        parsed_curl = extract_session_from_curl(curl_command)
+
+        target_user["csrf_token"] = parsed_curl["csrf_token"]
+        target_user["session_id"] = parsed_curl["session_id"]
+        target_user["user_id"] = parsed_curl["user_id"]
+        target_user["fb_dtsg"] = parsed_curl["fb_dtsg"]
+        target_user["jazoest"] = parsed_curl["jazoest"]
+        target_user["av"] = parsed_curl["av"]
+        target_user["session_id_added_at"] = now_iso
+        target_user["csrf_token_added_at"] = now_iso
+        touched_credentials = True
+
+        refreshed_username = target_user.get("username")
+        if not refreshed_username:
+            refreshed_username = target_user.get("name") or parsed_curl["user_id"]
 
         target_user["username"] = refreshed_username
         if display_name is None:
