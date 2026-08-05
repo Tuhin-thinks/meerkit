@@ -348,7 +348,7 @@ loadSaved();
       </div>
 
       <!-- Field groups -->
-      <div v-if="parseResult" class="space-y-4">
+      <div v-if="parseResult" class="max-h-96 overflow-y-auto space-y-4 pr-1">
         <div class="flex items-center justify-between">
           <p class="text-xs text-slate-500">Select which fields to include in the request</p>
           <button
@@ -453,7 +453,9 @@ loadSaved();
           {{ testResult.status_code ?? "Error" }}
           <span class="text-slate-500">({{ testResult.elapsed_ms }}ms)</span>
         </p>
-        <pre class="mt-1 text-slate-400 font-mono text-[10px] max-h-64 overflow-auto whitespace-pre-wrap border border-white/[0.06] rounded-lg p-2 bg-black/20">{{ formatResponse(testResult.response_text) }}</pre>
+        <div class="mt-1 max-h-64 overflow-y-auto border border-white/[0.06] rounded-lg p-2 bg-black/20">
+          <pre class="text-slate-400 font-mono text-[10px] whitespace-pre-wrap">{{ formatResponse(testResult.response_text) }}</pre>
+        </div>
       </div>
       <p v-if="testError" class="text-xs text-rose-400">{{ testError }}</p>
     </div>
