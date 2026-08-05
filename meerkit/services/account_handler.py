@@ -1162,8 +1162,12 @@ def refresh_followback_prediction(
     metadata_time = datetime.now().isoformat()
     metadata_username = _as_str(metadata.get("username"))
     metadata_full_name = _as_str(metadata.get("full_name"))
-    metadata_follower_count = _as_int(metadata.get("account_followers_count"))
-    metadata_following_count = _as_int(metadata.get("account_following_count"))
+    metadata_follower_count = _as_int(
+        metadata.get("account_followers_count") or metadata.get("follower_count")
+    )
+    metadata_following_count = _as_int(
+        metadata.get("account_following_count") or metadata.get("following_count")
+    )
     cached_target_profile = db_service.get_target_profile(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -1399,8 +1403,12 @@ def get_target_relationship_cache_status(
             current_metadata=metadata,
         )
         metadata_time = datetime.now().isoformat()
-        metadata_follower_count = _as_int(metadata.get("account_followers_count"))
-        metadata_following_count = _as_int(metadata.get("account_following_count"))
+        metadata_follower_count = _as_int(
+            metadata.get("account_followers_count") or metadata.get("follower_count")
+        )
+        metadata_following_count = _as_int(
+            metadata.get("account_following_count") or metadata.get("following_count")
+        )
         cached_profile = db_service.get_target_profile(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,
