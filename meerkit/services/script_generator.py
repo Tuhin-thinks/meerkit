@@ -4,7 +4,7 @@ from urllib.parse import quote
 
 from jinja2 import Template
 
-RUNTIME_VARIABLE_KEYS = {"id", "target_user_id", "first", "after", "query", "username", "enable_integrity_filters"}
+RUNTIME_VARIABLE_KEYS = {"id", "target_user_id", "first", "after", "max_id", "query", "username", "enable_integrity_filters"}
 
 _SESSION_PATTERN = re.compile(r"\{\{session\.(\w+)\}\}")
 _RUNTIME_PATTERN = re.compile(r"\{\{runtime\.(\w+)\}\}")

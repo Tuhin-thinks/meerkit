@@ -185,6 +185,61 @@ class InstagramGateway:
                 message=f"Instagram returned {resp.status_code} with non-JSON body (session may be expired)",
             ) from exc
 
+    def _pattern_call_paginated(
+        self,
+        *,
+        app_user_id: str,
+        internal_name: str,
+        profile: ii.InstagramProfile,
+        runtime_values: dict | None = None,
+        max_pages: int = 50,
+        page_delay: float = 0.3,
+        increment_by: int | None = None,
+    ) -> dict:
+        """Make a paginated request following next_max_id until exhausted.
+
+        If increment_by is set, max_id is incremented numerically (for following).
+        Otherwise, next_max_id from the response is used (for followers).
+
+        Returns a merged dict with "users" list from all pages.
+        """
+        import time
+
+        merged_users: list[dict] = []
+        current_runtime = dict(runtime_values or {})
+        last_raw: dict = {}
+        page_num = 0
+
+        for _ in range(max_pages):
+            raw = self._pattern_call(
+                app_user_id=app_user_id,
+                internal_name=internal_name,
+                profile=profile,
+                runtime_values=current_runtime,
+            )
+            last_raw = raw
+
+            page_users = raw.get("users", [])
+            merged_users.extend(page_users)
+
+            if not page_users:
+                break
+
+            if increment_by is not None:
+                page_num += 1
+                current_runtime["max_id"] = page_num * increment_by
+            else:
+                next_max_id = raw.get("next_max_id")
+                if not next_max_id:
+                    break
+                current_runtime["max_id"] = next_max_id
+
+            time.sleep(page_delay)
+
+        result = dict(last_raw)
+        result["users"] = merged_users
+        return result
+
     def _tracked(
         self,
         *,
@@ -410,7 +465,7 @@ class InstagramGateway:
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
-            raw = self._pattern_call(
+            raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
                 internal_name="fetch_followers_list",
                 profile=profile,
@@ -451,7 +506,7 @@ class InstagramGateway:
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
-            raw = self._pattern_call(
+            raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
                 internal_name="fetch_following_list",
                 profile=profile,
@@ -459,6 +514,7 @@ class InstagramGateway:
                     "target_user_id": target_user_id,
                     "first": fetch_at_max,
                 },
+                increment_by=12,
             )
             return _parse_user_records(raw, "following")
 
@@ -491,7 +547,7 @@ class InstagramGateway:
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
-            raw = self._pattern_call(
+            raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
                 internal_name="fetch_followers_list",
                 profile=profile,
@@ -531,7 +587,7 @@ class InstagramGateway:
         fetch_at_max: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
-            raw = self._pattern_call(
+            raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
                 internal_name="fetch_following_list",
                 profile=profile,
@@ -539,6 +595,7 @@ class InstagramGateway:
                     "target_user_id": profile.user_id,
                     "first": fetch_at_max,
                 },
+                increment_by=12,
             )
             return _parse_user_records(raw, "following")
 
