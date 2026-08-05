@@ -57,12 +57,7 @@ const instagramUserForm = ref({
 
 const selectedInstagramUser = ref<InstagramUserRecord | null>(null);
 const activeAccountMessage = ref("");
-const accountUpdateForm = ref({
-    display_name: "",
-    cookie_string: "",
-});
-const accountUpdateMessage = ref("");
-type DetailsTab = "overview" | "api_usage" | "cache" | "credentials" | "alt_registry" | "api_scripts";
+type DetailsTab = "overview" | "api_usage" | "cache" | "alt_registry" | "api_scripts";
 const detailsTab = ref<DetailsTab>("overview");
 const selectedApiUsage = ref<InstagramApiUsageAccountSummary | null>(null);
 const apiUsageLoading = ref(false);
@@ -195,30 +190,6 @@ const { mutate: switchInstagramUser, isPending: switchPending } = useMutation({
     },
 });
 
-const {
-    mutate: saveInstagramUserEdits,
-    isPending: saveInstagramUserEditsPending,
-    error: saveInstagramUserEditsError,
-} = useMutation({
-    mutationFn: (payload: {
-        instagramUserId: string;
-        display_name?: string;
-        cookie_string?: string;
-    }) =>
-        api.updateInstagramUser(payload.instagramUserId, {
-            display_name: payload.display_name,
-            cookie_string: payload.cookie_string,
-        }),
-    onSuccess: (payload) => {
-        queryClient.setQueryData(["me"], payload.me);
-        selectedInstagramUser.value = payload.instagram_user;
-        accountUpdateForm.value.display_name = payload.instagram_user.name;
-        accountUpdateForm.value.cookie_string = "";
-        accountUpdateMessage.value = payload.message;
-        queryClient.invalidateQueries();
-    },
-});
-
 const { mutate: removeInstagramUser, isPending: removePending } = useMutation({
     mutationFn: (instagramUserId: string) => api.deleteInstagramUser(instagramUserId),
     onSuccess: (payload) => {
@@ -264,7 +235,6 @@ watch(
 
 watch(currentView, () => {
     activeAccountMessage.value = "";
-    accountUpdateMessage.value = "";
     if (currentView.value !== "details" && detailsCacheSizeInterval) {
         clearInterval(detailsCacheSizeInterval);
         detailsCacheSizeInterval = null;
@@ -279,77 +249,6 @@ const detailsCacheSizeLabel = computed(() => {
     if (bytes < 1024 * 1024 * 1024)
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-});
-
-interface CookiePreview {
-    sessionid: string | null;
-    ds_user_id: string | null;
-    csrftoken: string | null;
-}
-
-function parseCookieString(raw: string): CookiePreview {
-    const result: CookiePreview = { sessionid: null, ds_user_id: null, csrftoken: null };
-    let source = raw.trim();
-    if (source.toLowerCase().startsWith("cookie:")) {
-        source = source.slice(source.indexOf(":") + 1).trim();
-    }
-    for (const chunk of source.split(";")) {
-        const piece = chunk.trim();
-        if (!piece || !piece.includes("=")) continue;
-        const eqIdx = piece.indexOf("=");
-        const key = piece.slice(0, eqIdx).trim();
-        const value = piece.slice(eqIdx + 1).trim();
-        if (key === "sessionid") result.sessionid = value || null;
-        if (key === "ds_user_id") result.ds_user_id = value || null;
-        if (key === "csrftoken") result.csrftoken = value || null;
-    }
-    return result;
-}
-
-const parsedCookiePreview = computed<CookiePreview | null>(() => {
-    const raw = accountUpdateForm.value.cookie_string.trim();
-    if (!raw) return null;
-    return parseCookieString(raw);
-});
-
-function formatCredentialAge(ageHours: number): string {
-    if (ageHours < 1) {
-        return "Updated recently";
-    }
-    if (ageHours < 24) {
-        return `Updated ${ageHours} hour${ageHours === 1 ? "" : "s"} ago`;
-    }
-
-    const days = Math.floor(ageHours / 24);
-    const remainingHours = ageHours % 24;
-    const dayPart = `${days} day${days === 1 ? "" : "s"}`;
-    if (remainingHours === 0) {
-        return `Updated ${dayPart} ago`;
-    }
-
-    const hourPart = `${remainingHours} hour${remainingHours === 1 ? "" : "s"}`;
-    return `Updated ${dayPart} ${hourPart} ago`;
-}
-
-const selectedCredentialStatus = computed(() => {
-    const user = selectedInstagramUser.value;
-    if (!user) {
-        return null;
-    }
-    const isOld = Boolean(user.credentials_old);
-    const ageHours =
-        typeof user.credentials_age_hours === "number"
-            ? user.credentials_age_hours
-            : null;
-    return {
-        isOld,
-        ageHours,
-        label: isOld ? "Old" : "Fresh",
-        subtitle:
-            ageHours === null
-                ? "Age unknown"
-                : formatCredentialAge(ageHours),
-    };
 });
 
 function clearDetailsCacheInterval(): void {
@@ -397,11 +296,6 @@ function startDetailsCacheSizePolling(instagramUserId: string) {
 
 async function loadDetails(instagramUserId: string) {
     selectedInstagramUser.value = await api.getInstagramUser(instagramUserId);
-    if (selectedInstagramUser.value) {
-        accountUpdateForm.value.display_name = selectedInstagramUser.value.name;
-        accountUpdateForm.value.cookie_string = "";
-    }
-    accountUpdateMessage.value = "";
 
     apiUsageLoading.value = true;
     apiUsageError.value = "";
@@ -439,26 +333,6 @@ watch(
     },
     { immediate: true },
 );
-
-function submitInstagramUserEdits() {
-    if (!selectedInstagramUser.value) {
-        return;
-    }
-
-    const displayName = accountUpdateForm.value.display_name.trim();
-    const cookieString = accountUpdateForm.value.cookie_string.trim();
-
-    if (!displayName && !cookieString) {
-        accountUpdateMessage.value = "Enter a display name or paste a cookie string first.";
-        return;
-    }
-
-    saveInstagramUserEdits({
-        instagramUserId: selectedInstagramUser.value.instagram_user_id,
-        display_name: displayName || undefined,
-        cookie_string: cookieString || undefined,
-    });
-}
 
 function goTo(view: AppView) {
     if (view === "details" && selectedInstagramUser.value) {
@@ -780,13 +654,6 @@ const discoveryUsername = computed(() => {
                         </button>
                         <button
                             class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
-                            :class="detailsTab === 'credentials' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
-                            @click="detailsTab = 'credentials'"
-                        >
-                            Credentials
-                        </button>
-                        <button
-                            class="rounded-lg px-3 py-1.5 text-xs font-semibold border transition"
                             :class="detailsTab === 'alt_registry' ? 'bg-violet-500/20 border-violet-400/50 text-violet-100' : 'bg-white/[0.03] border-white/10 text-slate-300 hover:bg-white/[0.06]'"
                             @click="detailsTab = 'alt_registry'"
                         >
@@ -813,18 +680,6 @@ const discoveryUsername = computed(() => {
                         <p><span class="text-slate-400 font-medium">Instagram User ID:</span> <span class="text-slate-200">{{ selectedInstagramUser.instagram_user_id }}</span></p>
                         <p v-if="selectedInstagramUser.username"><span class="text-slate-400 font-medium">Username:</span> <span class="text-slate-200">{{ selectedInstagramUser.username }}</span></p>
                         <p v-if="selectedInstagramUser.created_at"><span class="text-slate-400 font-medium">Created:</span> <span class="text-slate-200">{{ new Date(selectedInstagramUser.created_at).toLocaleString() }}</span></p>
-
-                        <div
-                            v-if="selectedCredentialStatus?.isOld"
-                            class="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
-                        >
-                            <p class="text-xs font-semibold uppercase tracking-wide text-amber-300">
-                                Credential Warning
-                            </p>
-                            <p class="mt-1 text-sm text-amber-200">
-                                This account's credentials are old ({{ selectedCredentialStatus.subtitle }}). Refresh them in the Credentials tab to reduce auth failures.
-                            </p>
-                        </div>
 
                         <div class="mt-5 flex gap-2">
                             <button
@@ -1007,71 +862,6 @@ const discoveryUsername = computed(() => {
                     <section v-if="detailsTab === 'api_scripts'" class="mt-6">
                         <ApiPatternsPanel :profile-id="selectedInstagramUser.instagram_user_id" />
                     </section>
-
-                    <!-- Update form -->
-                    <form
-                        v-if="detailsTab === 'credentials'"
-                        class="mt-5 space-y-3 border border-white/[0.07] rounded-xl p-4 bg-white/[0.02]"
-                        @submit.prevent="submitInstagramUserEdits()"
-                    >
-                        <h3 class="text-sm font-semibold text-slate-200">Update Account Details</h3>
-                        <div
-                            v-if="selectedCredentialStatus"
-                            class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3"
-                        >
-                            <p class="text-xs text-slate-500 uppercase tracking-wide">Credential status</p>
-                            <div class="mt-2 flex items-center gap-2">
-                                <span
-                                    class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold border"
-                                    :class="selectedCredentialStatus.isOld
-                                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                                        : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'"
-                                >
-                                    {{ selectedCredentialStatus.label }}
-                                </span>
-                                <span class="text-xs text-slate-400">{{ selectedCredentialStatus.subtitle }}</span>
-                            </div>
-                        </div>
-                        <input
-                            v-model="accountUpdateForm.display_name"
-                            placeholder="Display name"
-                            class="input-dark"
-                        />
-                        <textarea
-                            v-model="accountUpdateForm.cookie_string"
-                            placeholder="Paste cookie string here (must include sessionid and ds_user_id)"
-                            rows="4"
-                            class="input-dark"
-                        />
-                        <!-- Cookie preview -->
-                        <div v-if="parsedCookiePreview" class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs">
-                            <p class="font-semibold text-slate-300 mb-2">Cookie preview</p>
-                            <div class="grid gap-1.5">
-                                <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-slate-500">sessionid</span>
-                                    <span :class="parsedCookiePreview.sessionid ? 'text-slate-200 break-all' : 'text-rose-400 italic'">{{ parsedCookiePreview.sessionid ?? 'not found' }}</span>
-                                </div>
-                                <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-slate-500">ds_user_id</span>
-                                    <span :class="parsedCookiePreview.ds_user_id ? 'text-slate-200 break-all' : 'text-rose-400 italic'">{{ parsedCookiePreview.ds_user_id ?? 'not found' }}</span>
-                                </div>
-                                <div class="flex items-start gap-2">
-                                    <span class="w-24 shrink-0 text-slate-500">csrftoken</span>
-                                    <span :class="parsedCookiePreview.csrftoken ? 'text-slate-200 break-all' : 'text-amber-400 italic'">{{ parsedCookiePreview.csrftoken ?? 'not found (optional)' }}</span>
-                                </div>
-                            </div>
-                        </div>
-                        <button
-                            :disabled="saveInstagramUserEditsPending"
-                            class="btn-ghost w-full rounded-xl px-4 py-2.5 text-sm font-semibold"
-                        >
-                            {{ saveInstagramUserEditsPending ? "Saving…" : "Save Updates" }}
-                        </button>
-                        <p v-if="accountUpdateMessage" class="text-sm text-emerald-400">{{ accountUpdateMessage }}</p>
-                        <p v-if="saveInstagramUserEditsError" class="text-sm text-rose-400">
-                            Could not update account. Check cookie content and try again.
-                        </p>
-                    </form>
 
                     <AltAccountsRegistryPanel
                         v-if="detailsTab === 'alt_registry'"
