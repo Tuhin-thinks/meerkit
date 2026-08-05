@@ -66,11 +66,14 @@ def test_gateway_fetches_and_stores_on_cache_miss(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "meerkit.services.instagram_gateway.ii.get_target_user_data",
-        lambda profile, target_user_id: {
-            "user_id": target_user_id,
-            "username": "fresh-user",
-            "account_followers_count": 33,
+        gateway,
+        "_pattern_call",
+        lambda **kw: {
+            "user": {
+                "user_id": kw["runtime_values"]["target_user_id"],
+                "username": "fresh-user",
+                "account_followers_count": 33,
+            }
         },
     )
 
@@ -152,10 +155,13 @@ def test_gateway_force_refresh_bypasses_cache_lookup(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "meerkit.services.instagram_gateway.ii.get_target_user_data",
-        lambda profile, target_user_id: {
-            "user_id": target_user_id,
-            "username": "fresh-user",
+        gateway,
+        "_pattern_call",
+        lambda **kw: {
+            "user": {
+                "user_id": kw["runtime_values"]["target_user_id"],
+                "username": "fresh-user",
+            }
         },
     )
 
@@ -223,8 +229,9 @@ def test_follow_action_bypasses_cache(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "meerkit.services.instagram_gateway.ii.follow_user_by_id",
-        lambda target_user_id, target_username, profile: 1,
+        gateway,
+        "_pattern_call",
+        lambda **kw: {"status": "ok"},
     )
 
     monkeypatch.setattr(
@@ -242,4 +249,4 @@ def test_follow_action_bypasses_cache(monkeypatch):
         caller_method="follow_action",
     )
 
-    assert result == 1
+    assert result == 200

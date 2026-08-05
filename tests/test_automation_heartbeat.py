@@ -149,6 +149,7 @@ def test_get_action_status_marks_expired_heartbeat_as_error(monkeypatch):
     }
 
     monkeypatch.setattr(automation_runner, "_states", {})
+    monkeypatch.setattr(automation_runner, "_STALE_RUNNING_TIMEOUT", timedelta(minutes=10))
     monkeypatch.setattr(
         automation_runner.db_service,
         "get_automation_action",
@@ -179,6 +180,7 @@ def test_get_action_status_uses_started_at_for_legacy_rows(monkeypatch):
     }
 
     monkeypatch.setattr(automation_runner, "_states", {})
+    monkeypatch.setattr(automation_runner, "_STALE_RUNNING_TIMEOUT", timedelta(minutes=10))
     monkeypatch.setattr(
         automation_runner.db_service,
         "get_automation_action",
@@ -210,6 +212,7 @@ def test_get_action_status_keeps_queued_timeout_logic(monkeypatch):
     }
 
     monkeypatch.setattr(automation_runner, "_states", {})
+    monkeypatch.setattr(automation_runner, "_STALE_RUNNING_TIMEOUT", timedelta(minutes=10))
     monkeypatch.setattr(
         automation_runner.db_service,
         "get_automation_action",
