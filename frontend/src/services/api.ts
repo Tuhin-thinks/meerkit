@@ -82,7 +82,7 @@ export const getInstagramUser = (instagramUserId: string) =>
 
 export const updateInstagramUser = (
   instagramUserId: string,
-  payload: { display_name?: string; cookie_string?: string; curl_command?: string; operation?: string },
+  payload: { display_name?: string; cookie_string?: string },
 ) =>
   http
     .patch<{ instagram_user: InstagramUserRecord; me: MeResponse; message: string }>(

@@ -60,8 +60,6 @@ const activeAccountMessage = ref("");
 const accountUpdateForm = ref({
     display_name: "",
     cookie_string: "",
-    curl_command: "",
-    operation: "",
 });
 const accountUpdateMessage = ref("");
 type DetailsTab = "overview" | "api_usage" | "cache" | "credentials" | "alt_registry" | "api_scripts";
@@ -206,22 +204,16 @@ const {
         instagramUserId: string;
         display_name?: string;
         cookie_string?: string;
-        curl_command?: string;
-        operation?: string;
     }) =>
         api.updateInstagramUser(payload.instagramUserId, {
             display_name: payload.display_name,
             cookie_string: payload.cookie_string,
-            curl_command: payload.curl_command,
-            operation: payload.operation,
         }),
     onSuccess: (payload) => {
         queryClient.setQueryData(["me"], payload.me);
         selectedInstagramUser.value = payload.instagram_user;
         accountUpdateForm.value.display_name = payload.instagram_user.name;
         accountUpdateForm.value.cookie_string = "";
-        accountUpdateForm.value.curl_command = "";
-        accountUpdateForm.value.operation = "";
         accountUpdateMessage.value = payload.message;
         queryClient.invalidateQueries();
     },
@@ -408,8 +400,6 @@ async function loadDetails(instagramUserId: string) {
     if (selectedInstagramUser.value) {
         accountUpdateForm.value.display_name = selectedInstagramUser.value.name;
         accountUpdateForm.value.cookie_string = "";
-        accountUpdateForm.value.curl_command = "";
-        accountUpdateForm.value.operation = "";
     }
     accountUpdateMessage.value = "";
 
@@ -457,16 +447,9 @@ function submitInstagramUserEdits() {
 
     const displayName = accountUpdateForm.value.display_name.trim();
     const cookieString = accountUpdateForm.value.cookie_string.trim();
-    const curlCommand = accountUpdateForm.value.curl_command.trim();
-    const operation = accountUpdateForm.value.operation;
 
-    if (!displayName && !cookieString && !curlCommand) {
-        accountUpdateMessage.value = "Enter a display name, paste a cookie string, or paste a curl command first.";
-        return;
-    }
-
-    if (curlCommand && !operation) {
-        accountUpdateMessage.value = "Select an operation type when pasting a curl command.";
+    if (!displayName && !cookieString) {
+        accountUpdateMessage.value = "Enter a display name or paste a cookie string first.";
         return;
     }
 
@@ -474,8 +457,6 @@ function submitInstagramUserEdits() {
         instagramUserId: selectedInstagramUser.value.instagram_user_id,
         display_name: displayName || undefined,
         cookie_string: cookieString || undefined,
-        curl_command: curlCommand || undefined,
-        operation: operation || undefined,
     });
 }
 
@@ -1062,27 +1043,6 @@ const discoveryUsername = computed(() => {
                             rows="4"
                             class="input-dark"
                         />
-                        <div class="border-t border-white/[0.06] pt-3 mt-1">
-                            <p class="text-[11px] text-slate-500 uppercase tracking-wide mb-2">Or paste a curl command</p>
-                            <textarea
-                                v-model="accountUpdateForm.curl_command"
-                                placeholder="Paste browser DevTools curl command here"
-                                rows="4"
-                                class="input-dark font-mono text-xs"
-                            />
-                            <select
-                                v-model="accountUpdateForm.operation"
-                                class="input-dark mt-2"
-                            >
-                                <option value="">Select operation type...</option>
-                                <option value="fetch_user_profile_data">Fetch Profile Data</option>
-                                <option value="follow_user">Follow User</option>
-                                <option value="unfollow_user">Unfollow User</option>
-                                <option value="fetch_followers_list">Fetch Followers List</option>
-                                <option value="fetch_following_list">Fetch Following List</option>
-                                <option value="search_user">Search User</option>
-                            </select>
-                        </div>
                         <!-- Cookie preview -->
                         <div v-if="parsedCookiePreview" class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-xs">
                             <p class="font-semibold text-slate-300 mb-2">Cookie preview</p>
