@@ -300,6 +300,12 @@ def build_request(
 
     url = resolve_value(str(pattern["url"]), session_values, runtime_values)
 
+    # Append max_id to URL if present in runtime_values and not already in URL
+    max_id = runtime_values.get("max_id")
+    if max_id is not None and "max_id" not in url:
+        separator = "&" if "?" in url else "?"
+        url = f"{url}{separator}max_id={max_id}"
+
     headers = {}
     raw_curl_url, raw_headers, raw_cookies, raw_data_str = curl_to_python.parse_curl_command(
         pattern["curl_command"]
