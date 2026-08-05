@@ -35,7 +35,6 @@ import type {
   ApiCurlPattern,
   CurlParseResult,
   PatternTestResult,
-  RefreshTokensResult,
 } from '../types/apiPattern'
 
 const http = axios.create({
@@ -83,7 +82,7 @@ export const getInstagramUser = (instagramUserId: string) =>
 
 export const updateInstagramUser = (
   instagramUserId: string,
-  payload: { display_name?: string; cookie_string?: string },
+  payload: { display_name?: string; cookie_string?: string; curl_command?: string; operation?: string },
 ) =>
   http
     .patch<{ instagram_user: InstagramUserRecord; me: MeResponse; message: string }>(
@@ -491,7 +490,19 @@ export const generateCurlScript = (internalName: string) =>
     params: { profile_id: activeInstagramUserId },
   }).then((r) => r.data)
 
-export const refreshSessionTokens = () =>
-  http.post<RefreshTokensResult>('/curl-patterns/refresh-session-tokens', {}, {
+export type FieldPreferences = {
+  selected_cookies: string[]
+  selected_headers: string[]
+  selected_data: string[]
+  selected_variables: string[]
+}
+
+export const getPreference = (key: string) =>
+  http.get<FieldPreferences | null>(`/curl-patterns/preferences/${encodeURIComponent(key)}`, {
+    params: { profile_id: activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const setPreference = (key: string, value: FieldPreferences) =>
+  http.put<FieldPreferences>(`/curl-patterns/preferences/${encodeURIComponent(key)}`, value, {
     params: { profile_id: activeInstagramUserId },
   }).then((r) => r.data)
