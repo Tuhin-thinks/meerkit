@@ -4,6 +4,8 @@ from urllib.parse import quote
 
 from jinja2 import Template
 
+RUNTIME_VARIABLE_KEYS = {"id", "target_user_id", "first", "after", "query", "username", "enable_integrity_filters"}
+
 _SESSION_PATTERN = re.compile(r"\{\{session\.(\w+)\}\}")
 _RUNTIME_PATTERN = re.compile(r"\{\{runtime\.(\w+)\}\}")
 
@@ -159,9 +161,14 @@ def generate_script(
     if all_variables:
         for vk in selected_variables:
             if vk in all_variables:
-                v = all_variables[vk]
-                raw = json.dumps(v) if not isinstance(v, str) else str(v)
-                variables[vk] = resolve_value(raw, session_values, runtime_values)
+                if vk in RUNTIME_VARIABLE_KEYS and runtime_values and vk in runtime_values:
+                    variables[vk] = str(runtime_values[vk])
+                elif vk == "id" and runtime_values and "target_user_id" in runtime_values:
+                    variables[vk] = str(runtime_values["target_user_id"])
+                else:
+                    v = all_variables[vk]
+                    raw = json.dumps(v) if not isinstance(v, str) else str(v)
+                    variables[vk] = resolve_value(raw, session_values, runtime_values)
 
     if data and variables:
         data_string_line = (

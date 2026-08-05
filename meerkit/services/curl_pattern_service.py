@@ -7,7 +7,7 @@ import curl_to_python
 import requests
 from meerkit.services.db_service import get_worker_db
 from meerkit.services.exceptions import MissingCurlPatternError
-from meerkit.services.script_generator import resolve_value
+from meerkit.services.script_generator import RUNTIME_VARIABLE_KEYS, resolve_value
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,6 @@ CONSTANT_FIELDS = {
     "x-ig-app-id", "content-type", "doc_id", "fb_api_req_friendly_name",
     "server_timestamps", "fb_api_caller_class", "x-fb-friendly-name",
 }
-RUNTIME_VARIABLE_KEYS = {"id", "target_user_id", "first", "after", "query", "username", "enable_integrity_filters"}
 JUNK_FIELDS = curl_to_python.JUNK_FIELDS
 
 
@@ -274,10 +273,15 @@ def build_request(
                 mapped_vars = {}
                 for vk in selected_variables:
                     if vk in variables:
-                        mapped_vars[vk] = resolve_value(
-                            json.dumps(variables[vk]) if not isinstance(variables[vk], str) else str(variables[vk]),
-                            session_values, runtime_values,
-                        )
+                        if vk in RUNTIME_VARIABLE_KEYS and vk in runtime_values:
+                            mapped_vars[vk] = str(runtime_values[vk])
+                        elif vk == "id" and "target_user_id" in runtime_values:
+                            mapped_vars[vk] = str(runtime_values["target_user_id"])
+                        else:
+                            mapped_vars[vk] = resolve_value(
+                                json.dumps(variables[vk]) if not isinstance(variables[vk], str) else str(variables[vk]),
+                                session_values, runtime_values,
+                            )
                 data_dict["variables"] = quote(json.dumps(mapped_vars))
             elif dk in raw_data:
                 data_dict[dk] = resolve_value(raw_data[dk], session_values, runtime_values)
