@@ -236,8 +236,17 @@ class InstagramGateway:
 
             time.sleep(page_delay)
 
+        # Deduplicate users by pk/id across pages
+        seen: set[str] = set()
+        unique_users: list[dict] = []
+        for u in merged_users:
+            key = str(u.get("pk") or u.get("id") or "")
+            if key and key not in seen:
+                seen.add(key)
+                unique_users.append(u)
+
         result = dict(last_raw)
-        result["users"] = merged_users
+        result["users"] = unique_users
         return result
 
     def _tracked(

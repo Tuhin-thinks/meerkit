@@ -1237,6 +1237,15 @@ def replace_target_profile_relationships(
 ) -> int:
     db = get_worker_db()
     fetched_at = fetched_at or _now_iso()
+
+    # Deduplicate by pk_id
+    seen: set[str] = set()
+    unique_profiles: list[ii.FollowerUserRecord] = []
+    for p in profiles:
+        if p.pk_id not in seen:
+            seen.add(p.pk_id)
+            unique_profiles.append(p)
+
     with db as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -1249,7 +1258,7 @@ def replace_target_profile_relationships(
             """,
             (app_user_id, reference_profile_id, target_profile_id, relationship_type),
         )
-        if profiles:
+        if unique_profiles:
             cursor.executemany(
                 """
                 INSERT INTO target_profile_relationships (
@@ -1282,7 +1291,7 @@ def replace_target_profile_relationships(
                         fetched_at,
                         fetched_at,
                     )
-                    for profile in profiles
+                    for profile in unique_profiles
                 ],
             )
         conn.commit()
