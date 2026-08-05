@@ -30,14 +30,35 @@ _topsearch_url = "https://www.instagram.com/web/search/topsearch/"
 _follow_doc_id = "9740159112729312"
 _follow_lsd = "vfndR6YI1o9Mb1SorLFoGO"
 
+_PROFILE_QUERY_URL = "https://www.instagram.com/api/graphql"
+_PROFILE_QUERY_DOC_ID = "37354402187538639"
+_PROFILE_QUERY_DOC_ID_LEGACY = "34272012165747896"
+
 
 @dataclass(frozen=True)
 class InstagramProfile:
-    """Holds the credential context for one Instagram account/session."""
+    """Holds the credential context for one Instagram account/session.
 
+    Gateway fields (used by instagram_gateway.py):
+        csrf_token, session_id, user_id
+
+    Legacy direct-path fields (used only by _fetch_profile_query_data):
+        fb_dtsg, jazoest, av, extra_cookies, extra_headers, doc_id, relay_variables
+    """
+
+    # Gateway fields — required for all operations
     csrf_token: str
     session_id: str
     user_id: str
+
+    # Legacy direct-path fields — used only by _fetch_profile_query_data
+    fb_dtsg: str = ""
+    jazoest: str = ""
+    av: str = ""
+    extra_cookies: dict[str, str] | None = None
+    extra_headers: dict[str, str] | None = None
+    doc_id: str = ""
+    relay_variables: dict[str, object] | None = None
 
 
 def _headers(profile: InstagramProfile) -> dict[str, str]:
@@ -415,6 +436,37 @@ def unfollow_user_by_id(
     return -1
 
 
+def _build_profile_query_variables(
+    target_user_id: str,
+    *,
+    include_render_surface: bool,
+    relay_overrides: dict[str, object] | None = None,
+) -> dict:
+    variables: dict[str, object] = {
+        "enable_integrity_filters": True,
+        "id": target_user_id,
+    }
+    if include_render_surface:
+        variables["render_surface"] = "PROFILE"
+
+    default_relay = {
+        "__relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider": False,
+        "__relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider": False,
+        "__relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider": True,
+        "__relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider": True,
+        "__relay_internal__pv__PolarisShortDramaEnabledrelayprovider": False,
+        "__relay_internal__pv__PolarisLongformEnabledrelayprovider": False,
+    }
+    if relay_overrides:
+        # Only apply relay flag overrides, not id/enable_integrity_filters
+        filtered = {
+            k: v
+            for k, v in relay_overrides.items()
+            if k.startswith("__relay_internal__")
+        }
+        default_relay.update(filtered)
+    variables |= default_relay
+    return variables
 def _fetch_profile_query_data(
     profile: InstagramProfile,
     target_user_id: str | None = None,
@@ -426,28 +478,62 @@ def _fetch_profile_query_data(
         extra={
             "event": "profile_query_fetch_started",
             "target_user_id": target_user_id,
+            "has_extra_credentials": bool(
+                profile.extra_headers and profile.extra_cookies
+            ),
         },
     )
 
-    variables = {
-        "enable_integrity_filters": True,
-        "id": target_user_id,
-        "render_surface": "PROFILE",
-        "__relay_internal__pv__PolarisCannesGuardianExperienceEnabledrelayprovider": False,
-        "__relay_internal__pv__PolarisCASB976ProfileEnabledrelayprovider": False,
-        "__relay_internal__pv__PolarisWebSchoolsEnabledrelayprovider": True,
-        "__relay_internal__pv__PolarisRepostsConsumptionEnabledrelayprovider": True,
-    }
+    use_enhanced = (
+        profile.extra_headers is not None
+        and profile.extra_cookies is not None
+        and profile.av
+        and profile.fb_dtsg
+    )
 
-    data = {
-        "variables": json.dumps(variables),
-        "doc_id": "34272012165747896",
-    }
+    if use_enhanced:
+        variables = _build_profile_query_variables(
+            target_user_id,
+            include_render_surface=False,
+            relay_overrides=profile.relay_variables,
+        )
+        doc_id = profile.doc_id or _PROFILE_QUERY_DOC_ID
+        # Build data as raw string to avoid double-URL-encoding by requests.post(data=dict)
+        data = "&".join([
+            f"av={profile.av}",
+            f"fb_dtsg={profile.fb_dtsg}",
+            f"jazoest={profile.jazoest}",
+            "fb_api_caller_class=RelayModern",
+            "fb_api_req_friendly_name=PolarisProfilePageContentQuery",
+            "server_timestamps=true",
+            f"variables={quote(json.dumps(variables))}",
+            f"doc_id={doc_id}",
+        ])
+        headers = {
+            "x-csrftoken": profile.csrf_token,
+            "x-ig-app-id": "936619743392459",
+            "x-fb-friendly-name": "PolarisProfilePageContentQuery",
+            **(profile.extra_headers or {}),
+        }
+        headers["content-type"] = "application/x-www-form-urlencoded"
+        cookies = dict(profile.extra_cookies)
+        request_url = _PROFILE_QUERY_URL
+    else:
+        variables = _build_profile_query_variables(
+            target_user_id, include_render_surface=True
+        )
+        data = {
+            "variables": json.dumps(variables),
+            "doc_id": _PROFILE_QUERY_DOC_ID_LEGACY,
+        }
+        headers = _profile_query_headers(profile)
+        cookies = _cookies(profile)
+        request_url = url
 
     response = requests.post(
-        url,
-        headers=_profile_query_headers(profile),
-        cookies=_cookies(profile),
+        request_url,
+        headers=headers,
+        cookies=cookies,
         data=data,
     )
     if not response.ok:
@@ -461,8 +547,15 @@ def _fetch_profile_query_data(
             target_user_id=target_user_id,
         )
     response.raise_for_status()
-
-    return response.json()
+    # todo: remove try...except when debugging is complete. For now, we want to see the raw response if JSON parsing fails.
+    try:
+        return response.json()
+    except json.JSONDecodeError as err:
+        print("❌ Error: Failed to parse JSON response.")
+        print(f"Response: {response.text}")
+        raise json.JSONDecodeError(
+            f"Failed to parse JSON response: {err.msg}", err.doc, err.pos
+        ) from err
 
 
 def _extract_user_summary(
