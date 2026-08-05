@@ -74,6 +74,43 @@ def _deserialize_follower_records(payload: object) -> list[ii.FollowerUserRecord
     return records
 
 
+def _parse_user_records(raw: dict, relationship_type: str) -> list[ii.FollowerUserRecord]:
+    """Parse user records from either REST v1 or GraphQL response format.
+
+    REST v1: {"users":[{"pk":"...","username":"...",...}]}
+    GraphQL: {"data":{"user":{"edge_followed_by":{"edges":[{"node":{...}}]}}}}
+    """
+    users: list[dict] = []
+
+    # REST v1 format: {"users": [...]}
+    if "users" in raw and isinstance(raw["users"], list):
+        users = raw["users"]
+    else:
+        # GraphQL format
+        edge_key = "edge_followed_by" if relationship_type == "followers" else "edge_follow"
+        edges = raw.get("data", {}).get("user", {}).get(edge_key, {}).get("edges", [])
+        users = [edge.get("node", {}) for edge in edges]
+
+    records: list[ii.FollowerUserRecord] = []
+    for u in users:
+        # REST v1 uses "pk", GraphQL uses "id"
+        pk = u.get("pk") or u.get("id") or ""
+        records.append(
+            ii.FollowerUserRecord(
+                pk_id=str(pk),
+                id=str(u.get("id") or pk),
+                username=u.get("username", ""),
+                full_name=u.get("full_name", ""),
+                is_private=bool(u.get("is_private", False)),
+                profile_pic_url=u.get("profile_pic_url") or "",
+                fbid_v2=str(u.get("fbid_v2")) if u.get("fbid_v2") else None,
+                profile_pic_id=u.get("profile_pic_id") or None,
+                is_verified=bool(u.get("is_verified", False)),
+            )
+        )
+    return records
+
+
 class InstagramGateway:
     """Thin tracked wrapper around Instagram interface calls used by meerkit services."""
 
@@ -382,24 +419,7 @@ class InstagramGateway:
                     "first": fetch_at_max,
                 },
             )
-            users = raw.get("data", {}).get("user", {}).get("edge_followed_by", {}).get("edges", [])
-            records: list[ii.FollowerUserRecord] = []
-            for edge in users:
-                node = edge.get("node", {})
-                records.append(
-                    ii.FollowerUserRecord(
-                        pk_id=str(node.get("id", "")),
-                        id=str(node.get("id", "")),
-                        username=node.get("username", ""),
-                        full_name=node.get("full_name", ""),
-                        is_private=bool(node.get("is_private", False)),
-                        profile_pic_url=node.get("profile_pic_url") or "",
-                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
-                        profile_pic_id=node.get("profile_pic_id") or None,
-                        is_verified=bool(node.get("is_verified", False)),
-                    )
-                )
-            return records
+            return _parse_user_records(raw, "followers")
 
         return self._tracked(
             app_user_id=app_user_id,
@@ -440,24 +460,7 @@ class InstagramGateway:
                     "first": fetch_at_max,
                 },
             )
-            users = raw.get("data", {}).get("user", {}).get("edge_follow", {}).get("edges", [])
-            records: list[ii.FollowerUserRecord] = []
-            for edge in users:
-                node = edge.get("node", {})
-                records.append(
-                    ii.FollowerUserRecord(
-                        pk_id=str(node.get("id", "")),
-                        id=str(node.get("id", "")),
-                        username=node.get("username", ""),
-                        full_name=node.get("full_name", ""),
-                        is_private=bool(node.get("is_private", False)),
-                        profile_pic_url=node.get("profile_pic_url") or "",
-                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
-                        profile_pic_id=node.get("profile_pic_id") or None,
-                        is_verified=bool(node.get("is_verified", False)),
-                    )
-                )
-            return records
+            return _parse_user_records(raw, "following")
 
         return self._tracked(
             app_user_id=app_user_id,
@@ -497,24 +500,7 @@ class InstagramGateway:
                     "first": fetch_at_max,
                 },
             )
-            users = raw.get("data", {}).get("user", {}).get("edge_followed_by", {}).get("edges", [])
-            records: list[ii.FollowerUserRecord] = []
-            for edge in users:
-                node = edge.get("node", {})
-                records.append(
-                    ii.FollowerUserRecord(
-                        pk_id=str(node.get("id", "")),
-                        id=str(node.get("id", "")),
-                        username=node.get("username", ""),
-                        full_name=node.get("full_name", ""),
-                        is_private=bool(node.get("is_private", False)),
-                        profile_pic_url=node.get("profile_pic_url") or "",
-                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
-                        profile_pic_id=node.get("profile_pic_id") or None,
-                        is_verified=bool(node.get("is_verified", False)),
-                    )
-                )
-            return records
+            return _parse_user_records(raw, "followers")
 
         return self._tracked(
             app_user_id=app_user_id,
@@ -554,24 +540,7 @@ class InstagramGateway:
                     "first": fetch_at_max,
                 },
             )
-            users = raw.get("data", {}).get("user", {}).get("edge_follow", {}).get("edges", [])
-            records: list[ii.FollowerUserRecord] = []
-            for edge in users:
-                node = edge.get("node", {})
-                records.append(
-                    ii.FollowerUserRecord(
-                        pk_id=str(node.get("id", "")),
-                        id=str(node.get("id", "")),
-                        username=node.get("username", ""),
-                        full_name=node.get("full_name", ""),
-                        is_private=bool(node.get("is_private", False)),
-                        profile_pic_url=node.get("profile_pic_url") or "",
-                        fbid_v2=str(node.get("fbid_v2")) if node.get("fbid_v2") else None,
-                        profile_pic_id=node.get("profile_pic_id") or None,
-                        is_verified=bool(node.get("is_verified", False)),
-                    )
-                )
-            return records
+            return _parse_user_records(raw, "following")
 
         return self._tracked(
             app_user_id=app_user_id,
