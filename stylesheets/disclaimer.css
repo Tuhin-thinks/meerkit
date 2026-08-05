@@ -1,0 +1,31 @@
+/* Thin legal disclaimer bar shown globally via Material announcement area */
+[data-md-component="announce"] .md-banner {
+  background: #f7ecd6;
+  border-bottom: 1px solid #d5b87a;
+  color: #4a2f00;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+[data-md-component="announce"] .md-banner__inner {
+  margin: 0 auto;
+  max-width: 76rem;
+  padding: 0.36rem 1rem;
+  text-align: center;
+}
+
+[data-md-color-scheme="slate"] [data-md-component="announce"] .md-banner {
+  background: #2b2a22;
+  border-bottom: 1px solid #887047;
+  color: #f0ddb2;
+}
+
+@media (max-width: 48rem) {
+  [data-md-component="announce"] .md-banner {
+    font-size: 0.7rem;
+  }
+
+  [data-md-component="announce"] .md-banner__inner {
+    padding: 0.34rem 0.7rem;
+  }
+}
