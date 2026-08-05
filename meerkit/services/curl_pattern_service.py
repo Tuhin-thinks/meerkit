@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from datetime import datetime
 from urllib.parse import quote
 
@@ -27,6 +28,15 @@ def parse_curl(curl_text: str) -> dict:
     url, headers, cookies, data_str = curl_to_python.parse_curl_command(curl_text)
     data = curl_to_python.parse_data(data_str) if data_str else {}
     kept, junk, variables = curl_to_python.build_request_components(data)
+
+    if variables and "id" in variables:
+        user_id = str(variables["id"])
+        if user_id.isdigit():
+            url = re.sub(
+                rf'(?<=/){re.escape(user_id)}(?=[/?])',
+                '{{runtime.target_user_id}}',
+                url,
+            )
 
     http_method = "GET" if not data_str else "POST"
 
