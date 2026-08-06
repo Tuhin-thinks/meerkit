@@ -157,6 +157,20 @@ def run_scan_for_api(
         user_id=reference_profile_id,
     )
 
+    # Resolve the authenticated account's follower/following totals from its own
+    # profile data so list pagination can run until the known total is exhausted
+    # instead of being cut off by a page-count cap.
+    expected_followers, expected_following = (
+        instagram_gateway.resolve_relationship_totals(
+            app_user_id=app_user_id,
+            instagram_user_id=reference_profile_id,
+            profile=profile,
+            target_user_id=profile.user_id,
+            caller_service="scan_flow",
+            caller_method="run_scan_for_api",
+        )
+    )
+
     # Scans must always refresh the authenticated account's live relationship
     # data so dashboard-triggered scans never reuse stale cache entries.
     followers = instagram_gateway.get_current_followers_v2(
@@ -166,6 +180,7 @@ def run_scan_for_api(
         caller_service="scan_flow",
         caller_method="run_scan_for_api",
         force_refresh=True,
+        expected_total=expected_followers,
     )
     instagram_gateway.get_current_following_v2(
         app_user_id=app_user_id,
@@ -174,6 +189,7 @@ def run_scan_for_api(
         caller_service="scan_flow",
         caller_method="run_scan_for_api",
         force_refresh=True,
+        expected_total=expected_following,
     )
 
     add_to_downloader_queue(app_user_id, reference_profile_id, followers)

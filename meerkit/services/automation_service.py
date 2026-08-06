@@ -1566,6 +1566,14 @@ def execute_left_right_compare_item(
     else:
         profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
         try:
+            left_followers_expected, _ = instagram_gateway.resolve_relationship_totals(
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user["instagram_user_id"],
+                profile=profile,
+                target_user_id=left_user_id,
+                caller_service="automation_service",
+                caller_method="execute_left_right_compare_item",
+            )
             left_followers = instagram_gateway.get_target_followers_v2(
                 app_user_id=app_user_id,
                 instagram_user_id=instagram_user["instagram_user_id"],
@@ -1574,6 +1582,7 @@ def execute_left_right_compare_item(
                 caller_service="automation_service",
                 caller_method="execute_left_right_compare_item",
                 force_refresh=True,
+                expected_total=left_followers_expected,
             )
         except Exception as exc:
             db_service.update_automation_action_item(

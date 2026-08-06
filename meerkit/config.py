@@ -45,8 +45,9 @@ LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED = _env_flag(
 # Number of times to retry a follow/unfollow call before giving up on that action.
 INSTA_ACTION_RETRY_COUNT = int(os.environ.get("INSTA_ACTION_RETRY_COUNT", "3"))
 # How many follower/following entries Instagram returns per paginated fetch request.
+# Instagram caps this endpoint at 200 per page; larger values are clamped server-side.
 INSTA_FOLLOWERS_FETCH_PAGE_SIZE = int(
-    os.environ.get("INSTA_FOLLOWERS_FETCH_PAGE_SIZE", "24")
+    os.environ.get("INSTA_FOLLOWERS_FETCH_PAGE_SIZE", "200")
 )
 # Sleep duration (seconds) between consecutive follower-list page fetches to avoid rate-limiting.
 INSTA_FOLLOWERS_LOOP_DELAY_SECONDS = float(

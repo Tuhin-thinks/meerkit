@@ -256,6 +256,21 @@ def get_following_users():
 
     try:
         profile = _build_profile(app_user_id, reference_profile_id)
+        expected_followers = None
+        expected_following = None
+        if force_refresh:
+            # Fresh list fetch: size pagination from the account's real totals so
+            # it runs until the full list is exhausted instead of a page cap.
+            expected_followers, expected_following = (
+                instagram_gateway.resolve_relationship_totals(
+                    app_user_id=app_user_id,
+                    instagram_user_id=reference_profile_id,
+                    profile=profile,
+                    target_user_id=profile.user_id,
+                    caller_service="automation",
+                    caller_method="get_following_users",
+                )
+            )
         following_records = instagram_gateway.get_current_following_v2(
             app_user_id=app_user_id,
             instagram_user_id=reference_profile_id,
@@ -263,6 +278,7 @@ def get_following_users():
             caller_service="automation",
             caller_method="get_following_users",
             force_refresh=force_refresh,
+            expected_total=expected_following,
         )
         follower_records = instagram_gateway.get_current_followers_v2(
             app_user_id=app_user_id,
@@ -271,6 +287,7 @@ def get_following_users():
             caller_service="automation",
             caller_method="get_following_users",
             force_refresh=force_refresh,
+            expected_total=expected_followers,
         )
     except Exception as exc:
         logger.exception("Failed to fetch following list from Instagram gateway")

@@ -1219,6 +1219,7 @@ def refresh_followback_prediction(
                 caller_service="account_handler",
                 caller_method="refresh_followback_prediction",
                 force_refresh=True,
+                expected_total=metadata_follower_count,
             ),
             "following": lambda target_id: instagram_gateway.get_target_following_v2(
                 app_user_id=app_user_id,
@@ -1228,6 +1229,7 @@ def refresh_followback_prediction(
                 caller_service="account_handler",
                 caller_method="refresh_followback_prediction",
                 force_refresh=True,
+                expected_total=metadata_following_count,
             ),
         }
         for relationship in sorted(relationships_to_refresh):

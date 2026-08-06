@@ -19,15 +19,21 @@ def _record(pk_id: str, username: str) -> ii.FollowerUserRecord:
 def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp_path):
     follower_records = [_record("1", "alice"), _record("2", "bob")]
     following_records = [_record("3", "carol")]
-    refresh_calls: list[tuple[str, bool]] = []
+    refresh_calls: list[tuple[str, bool, int | None]] = []
 
     def capture_followers(**kwargs):
-        refresh_calls.append(("followers", kwargs["force_refresh"]))
+        refresh_calls.append(("followers", kwargs["force_refresh"], kwargs["expected_total"]))
         return follower_records
 
     def capture_following(**kwargs):
-        refresh_calls.append(("following", kwargs["force_refresh"]))
+        refresh_calls.append(("following", kwargs["force_refresh"], kwargs["expected_total"]))
         return following_records
+
+    totals_calls: list[tuple[str, int | None]] = []
+
+    def capture_totals(**kwargs):
+        totals_calls.append((kwargs["caller_method"], kwargs["target_user_id"]))
+        return 100, 50
 
     monkeypatch.setattr(
         "get_current_followers.instagram_gateway.get_current_followers_v2",
@@ -36,6 +42,10 @@ def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp
     monkeypatch.setattr(
         "get_current_followers.instagram_gateway.get_current_following_v2",
         capture_following,
+    )
+    monkeypatch.setattr(
+        "get_current_followers.instagram_gateway.resolve_relationship_totals",
+        capture_totals,
     )
     monkeypatch.setattr("get_current_followers._load_latest_snapshot", lambda *_: None)
     monkeypatch.setattr(
@@ -78,7 +88,11 @@ def test_run_scan_for_api_force_refreshes_current_relationships(monkeypatch, tmp
         reference_profile_id="ig_1",
     )
 
-    assert refresh_calls == [("followers", True), ("following", True)]
+    assert refresh_calls == [
+        ("followers", True, 100),
+        ("following", True, 50),
+    ]
+    assert totals_calls == [("run_scan_for_api", "ig_1")]
     assert len(enrichment_calls) == 1
     assert enrichment_calls[0]["diff_id"] == "diff_123"
     assert enrichment_calls[0]["reference_profile_id"] == "ig_1"

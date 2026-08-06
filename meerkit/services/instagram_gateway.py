@@ -75,6 +75,43 @@ def _deserialize_follower_records(payload: object) -> list[ii.FollowerUserRecord
     return records
 
 
+def _extract_relationship_totals(
+    user_data: dict[str, object],
+) -> tuple[int | None, int | None]:
+    """Extract follower/following totals from profile user data.
+
+    Handles GraphQL (edge_followed_by/edge_follow) and REST/normalized
+    (account_followers_count/follower_count) formats. These totals tell the
+    paginated fetch how many pages it needs to exhaust the full list.
+    """
+    edge_followed_by = user_data.get("edge_followed_by")
+    edge_follow = user_data.get("edge_follow")
+
+    follower_count: int | None = None
+    if isinstance(edge_followed_by, dict) and isinstance(
+        edge_followed_by.get("count"), int
+    ):
+        follower_count = edge_followed_by["count"]
+    if not isinstance(follower_count, int):
+        candidate = user_data.get("account_followers_count") or user_data.get(
+            "follower_count"
+        )
+        if isinstance(candidate, int):
+            follower_count = candidate
+
+    following_count: int | None = None
+    if isinstance(edge_follow, dict) and isinstance(edge_follow.get("count"), int):
+        following_count = edge_follow["count"]
+    if not isinstance(following_count, int):
+        candidate = user_data.get("account_following_count") or user_data.get(
+            "following_count"
+        )
+        if isinstance(candidate, int):
+            following_count = candidate
+
+    return follower_count, following_count
+
+
 def _parse_user_records(raw: dict, relationship_type: str) -> list[ii.FollowerUserRecord]:
     """Parse user records from either REST v1 or GraphQL response format.
 
@@ -196,7 +233,8 @@ class InstagramGateway:
         internal_name: str,
         profile: ii.InstagramProfile,
         runtime_values: dict | None = None,
-        max_pages: int = 50,
+        max_pages: int = 200,
+        expected_total: int | None = None,
         page_delay: float = 0.3,
     ) -> dict:
         """Make a paginated request following next_max_id until exhausted.
@@ -204,15 +242,25 @@ class InstagramGateway:
         Uses the pagination cursor (max_id/next_max_id) returned by the response
         to fetch subsequent pages.
 
+        Pagination naturally stops when Instagram stops returning a cursor.
+        ``max_pages`` is only a safety ceiling; when ``expected_total`` (the
+        account's known follower/following count from profile data) is provided,
+        the page budget is widened to cover the full expected list so fetching
+        runs until the total is exhausted rather than being cut off by an
+        arbitrary cap.
+
         Returns a merged dict with "users" list from all pages.
         """
+        import math
         import time
 
         merged_users: list[dict] = []
         current_runtime = dict(runtime_values or {})
         last_raw: dict = {}
+        page_index = 0
 
-        for _ in range(max_pages):
+        while page_index < max_pages:
+            page_index += 1
             raw = self._pattern_call(
                 app_user_id=app_user_id,
                 reference_profile_id=reference_profile_id,
@@ -227,6 +275,12 @@ class InstagramGateway:
 
             if not page_users:
                 break
+
+            if expected_total is not None and page_index == 1:
+                effective_page_size = max(1, len(page_users))
+                needed_pages = math.ceil(expected_total / effective_page_size) + 1
+                if needed_pages > max_pages:
+                    max_pages = needed_pages
 
             next_max_id = raw.get("next_max_id") or raw.get("max_id")
             if not next_max_id:
@@ -462,6 +516,40 @@ class InstagramGateway:
                 pass
         return result
 
+    def resolve_relationship_totals(
+        self,
+        *,
+        app_user_id: str,
+        instagram_user_id: str,
+        profile: ii.InstagramProfile,
+        target_user_id: str,
+        caller_service: str,
+        caller_method: str,
+    ) -> tuple[int | None, int | None]:
+        """Best-effort resolution of a profile's follower/following totals.
+
+        Fetches fresh profile user data and extracts follower and following
+        counts, which list-fetch callers pass as ``expected_total`` so
+        pagination runs until the real total is exhausted instead of being cut
+        off by a page-count cap. Degrades to ``(None, None)`` on any failure.
+
+        Shared by the scan flow and the automation/batch-unfollow flows so all
+        list fetches size their pagination identically.
+        """
+        try:
+            user_data = self.get_target_user_data(
+                app_user_id=app_user_id,
+                instagram_user_id=instagram_user_id,
+                profile=profile,
+                target_user_id=target_user_id,
+                caller_service=caller_service,
+                caller_method=f"{caller_method}::resolve_relationship_totals",
+                force_refresh=True,
+            )
+        except Exception:
+            return None, None
+        return _extract_relationship_totals(user_data)
+
     def get_target_followers_v2(
         self,
         *,
@@ -473,6 +561,7 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
+        expected_total: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
@@ -484,6 +573,7 @@ class InstagramGateway:
                     "target_user_id": target_user_id,
                     "first": fetch_at_max,
                 },
+                expected_total=expected_total,
             )
             return _parse_user_records(raw, "followers")
 
@@ -515,6 +605,7 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
+        expected_total: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
@@ -526,6 +617,7 @@ class InstagramGateway:
                     "target_user_id": target_user_id,
                     "first": fetch_at_max,
                 },
+                expected_total=expected_total,
             )
             return _parse_user_records(raw, "following")
 
@@ -556,6 +648,7 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
+        expected_total: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
@@ -567,6 +660,7 @@ class InstagramGateway:
                     "target_user_id": profile.user_id,
                     "first": fetch_at_max,
                 },
+                expected_total=expected_total,
             )
             return _parse_user_records(raw, "followers")
 
@@ -597,6 +691,7 @@ class InstagramGateway:
         caller_method: str,
         force_refresh: bool = False,
         fetch_at_max: int | None = None,
+        expected_total: int | None = None,
     ) -> list[ii.FollowerUserRecord]:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
@@ -608,6 +703,7 @@ class InstagramGateway:
                     "target_user_id": profile.user_id,
                     "first": fetch_at_max,
                 },
+                expected_total=expected_total,
             )
             return _parse_user_records(raw, "following")
 
