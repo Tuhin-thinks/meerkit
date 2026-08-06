@@ -1,12 +1,19 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TypedDict, cast
 
+import requests
+
 import insta_interface as ii
+from meerkit.config import (
+    ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS,
+    MAX_LIVE_DEACTIVATION_CHECKS_PER_SCAN,
+)
 from meerkit.services import db_service
 from meerkit.services.db_service import get_diff_file_path
+from meerkit.services.exceptions import MissingCurlPatternError
 from meerkit.services.instagram_gateway import instagram_gateway
 
 logger = logging.getLogger(__name__)
@@ -248,17 +255,91 @@ def reactivate_returned_accounts(
     return reactivated_ids
 
 
+def _parse_iso_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _fresh_db_deactivation_status(target_profile: dict) -> bool | None:
+    """Return a stored deactivation decision only while it is fresh enough.
+
+    Returns None when there is no decision, or the decision is older than
+    ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS, forcing a live re-check.
+    """
+    if not target_profile:
+        return None
+    status_value = target_profile.get("is_deactivated")
+    if status_value is None:
+        return None
+
+    updated_at = _parse_iso_timestamp(
+        target_profile.get("updated_at") or target_profile.get("update_date")
+    )
+    if updated_at is None:
+        return None
+
+    max_age = timedelta(hours=max(1, ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS))
+    now = (
+        datetime.now(updated_at.tzinfo)
+        if updated_at.tzinfo is not None
+        else datetime.now()
+    )
+    if now - updated_at > max_age:
+        return None
+    return bool(status_value)
+
+
+def _extract_user_values(user_data: dict) -> dict:
+    """Pull target_profiles metadata fields out of a user object."""
+    friendship_status = user_data.get("friendship_status")
+    friendship_status = friendship_status if isinstance(friendship_status, dict) else {}
+    return {
+        "username": _as_str(user_data.get("username")),
+        "full_name": _as_str(user_data.get("full_name")),
+        "follower_count": _as_int(user_data.get("follower_count")),
+        "following_count": _as_int(user_data.get("following_count")),
+        "is_private": _as_bool(user_data.get("is_private")),
+        "is_verified": _as_bool(user_data.get("is_verified")),
+        "me_following_account": _as_bool(friendship_status.get("following")),
+        "being_followed_by_account": _as_bool(friendship_status.get("followed_by")),
+    }
+
+
 def live_deactivated_map(
     *,
     app_user_id: str,
     reference_profile_id: str,
     profile: ii.InstagramProfile,
     target_profile_ids: set[str],
-    fetch_at_max: int,
     caller_service: str,
     caller_method: str,
-) -> dict[str, bool]:
+    max_checks: int = MAX_LIVE_DEACTIVATION_CHECKS_PER_SCAN,
+) -> tuple[dict[str, bool], set[str]]:
+    """Decide which target accounts are deactivated / not accessible.
+
+    Each target is resolved with a SINGLE live user-data probe
+    (``get_target_user_data``) instead of paginating their full follower and
+    following lists: a missing user object (GraphQL ``errors`` or null user)
+    means the account is not accessible. Fresh stored decisions from
+    ``target_profiles`` are reused within the configured max age, and the
+    number of live probes per call is capped by ``max_checks``.
+
+    Transport errors never fail the scan: the target keeps its stored decision
+    and the error is recorded, but it is excluded from the returned map.
+
+    Returns (deactivated_map, live_checked_profile_ids).
+    """
     result: dict[str, bool] = {}
+    checked_ids: set[str] = set()
     checked_at = datetime.now().isoformat()
 
     for target_profile_id in sorted(target_profile_ids):
@@ -270,10 +351,23 @@ def live_deactivated_map(
             )
             or {}
         )
-        is_deactivated: bool
-        last_error: str | None = None
+
+        fresh_status = _fresh_db_deactivation_status(existing)
+        if fresh_status is not None:
+            result[target_profile_id] = fresh_status
+            continue
+
+        if len(checked_ids) >= max_checks:
+            logger.info(
+                "Skipping live accessibility check for %s: budget %s reached",
+                target_profile_id,
+                max_checks,
+            )
+            continue
+
+        checked_ids.add(target_profile_id)
         try:
-            followers = instagram_gateway.get_target_followers_v2(
+            user_data = instagram_gateway.get_target_user_data(
                 app_user_id=app_user_id,
                 instagram_user_id=reference_profile_id,
                 profile=profile,
@@ -281,44 +375,61 @@ def live_deactivated_map(
                 caller_service=caller_service,
                 caller_method=caller_method,
                 force_refresh=True,
-                fetch_at_max=fetch_at_max,
             )
-            following = instagram_gateway.get_target_following_v2(
+            user_dict = (
+                user_data
+                if isinstance(user_data, dict) and user_data.get("id") is not None
+                else {}
+            )
+            is_deactivated = not bool(user_dict)
+            values = _extract_user_values(user_dict)
+            db_service.upsert_target_profile(
                 app_user_id=app_user_id,
-                instagram_user_id=reference_profile_id,
-                profile=profile,
-                target_user_id=target_profile_id,
-                caller_service=caller_service,
-                caller_method=caller_method,
-                force_refresh=True,
-                fetch_at_max=fetch_at_max,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                username=values["username"],
+                full_name=values["full_name"],
+                follower_count=values["follower_count"],
+                following_count=values["following_count"],
+                is_private=values["is_private"],
+                is_verified=values["is_verified"],
+                me_following_account=values["me_following_account"],
+                being_followed_by_account=values["being_followed_by_account"],
+                is_deactivated=is_deactivated,
+                fetch_status="live",
+                metadata_fetched_at=checked_at,
+                relationships_fetched_at=checked_at,
+                last_error=None,
             )
-            is_deactivated = not followers and not following
-        except ii.RelationshipFetchError as exc:
-            is_deactivated = True
-            last_error = str(exc)
+        except (requests.RequestException, MissingCurlPatternError) as exc:
+            logger.warning(
+                "Live accessibility check failed for %s: %s",
+                target_profile_id,
+                exc,
+            )
+            db_service.upsert_target_profile(
+                app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
+                target_profile_id=target_profile_id,
+                username=existing.get("username"),
+                full_name=existing.get("full_name"),
+                follower_count=existing.get("follower_count"),
+                following_count=existing.get("following_count"),
+                is_private=existing.get("is_private"),
+                is_verified=existing.get("is_verified"),
+                me_following_account=existing.get("me_following_account"),
+                being_followed_by_account=existing.get("being_followed_by_account"),
+                is_deactivated=existing.get("is_deactivated"),
+                fetch_status=str(existing.get("fetch_status") or "partial"),
+                metadata_fetched_at=existing.get("metadata_fetched_at"),
+                relationships_fetched_at=checked_at,
+                last_error=str(exc)[:500],
+            )
+            continue
 
         result[target_profile_id] = is_deactivated
-        db_service.upsert_target_profile(
-            app_user_id=app_user_id,
-            reference_profile_id=reference_profile_id,
-            target_profile_id=target_profile_id,
-            username=existing.get("username"),
-            full_name=existing.get("full_name"),
-            follower_count=existing.get("follower_count"),
-            following_count=existing.get("following_count"),
-            is_private=existing.get("is_private"),
-            is_verified=existing.get("is_verified"),
-            me_following_account=existing.get("me_following_account"),
-            being_followed_by_account=existing.get("being_followed_by_account"),
-            is_deactivated=is_deactivated,
-            fetch_status=existing.get("fetch_status") or "partial",
-            metadata_fetched_at=existing.get("metadata_fetched_at"),
-            relationships_fetched_at=checked_at,
-            last_error=last_error,
-        )
 
-    return result
+    return result, checked_ids
 
 
 def apply_account_accessibility_to_unfollowers(
@@ -363,7 +474,6 @@ def enrich_diff_accessibility_for_scan(
     reference_profile_id: str,
     profile: ii.InstagramProfile,
     diff_id: str,
-    fetch_at_max: int = 50,
 ) -> DiffAccessibilityResult:
     payload = load_diff_payload(diff_id)
     if not payload:
@@ -394,13 +504,13 @@ def enrich_diff_accessibility_for_scan(
             if isinstance(row, dict) and str(row.get("pk_id") or "").strip()
         }
     deactivated_map: dict[str, bool] = {}
+    checked_profile_ids: set[str] = set()
     if target_profile_ids:
-        deactivated_map = live_deactivated_map(
+        deactivated_map, checked_profile_ids = live_deactivated_map(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,
             profile=profile,
             target_profile_ids=target_profile_ids,
-            fetch_at_max=max(1, fetch_at_max),
             caller_service="scan_flow",
             caller_method="enrich_diff_accessibility_for_scan",
         )
@@ -411,13 +521,13 @@ def enrich_diff_accessibility_for_scan(
         diff_id,
         seeded_profiles,
         len(reactivated_profile_ids),
-        len(target_profile_ids),
+        len(checked_profile_ids),
         updated_rows,
     )
     return {
         "seeded_profiles": seeded_profiles,
         "reactivated_profile_ids": reactivated_profile_ids,
-        "checked_profile_ids": target_profile_ids,
+        "checked_profile_ids": checked_profile_ids,
         "updated_rows": updated_rows,
         "diff_path": diff_path,
     }
@@ -429,7 +539,6 @@ def enrich_diff_accessibility_once(
     reference_profile_id: str,
     profile: ii.InstagramProfile,
     diff_id: str,
-    fetch_at_max: int,
 ) -> DiffAccessibilityResult:
     payload = load_diff_payload(diff_id)
     if not payload:
@@ -448,14 +557,14 @@ def enrich_diff_accessibility_once(
             for row in unfollowers
             if isinstance(row, dict) and str(row.get("pk_id") or "").strip()
         }
-    deactivated_map = {}
+    deactivated_map: dict[str, bool] = {}
+    checked_profile_ids: set[str] = set()
     if target_profile_ids:
-        deactivated_map = live_deactivated_map(
+        deactivated_map, checked_profile_ids = live_deactivated_map(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,
             profile=profile,
             target_profile_ids=target_profile_ids,
-            fetch_at_max=max(1, fetch_at_max),
             caller_service="backfill_diff_accessibility_once",
             caller_method="enrich_diff_accessibility_once",
         )
@@ -464,7 +573,7 @@ def enrich_diff_accessibility_once(
     return {
         "seeded_profiles": seeded_profiles,
         "reactivated_profile_ids": set(),
-        "checked_profile_ids": target_profile_ids,
+        "checked_profile_ids": checked_profile_ids,
         "updated_rows": updated_rows,
         "diff_path": diff_path,
     }

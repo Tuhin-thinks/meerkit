@@ -1,3 +1,5 @@
+import requests
+
 import insta_interface as ii
 from meerkit.services import diff_accessibility
 
@@ -114,7 +116,30 @@ def test_reactivate_returned_accounts_updates_known_deactivated_rows(monkeypatch
     assert upserts[0]["last_error"] is None
 
 
-def test_live_deactivated_map_marks_empty_and_fetch_errors(monkeypatch):
+def _existing_row(target_profile_id: str, **overrides) -> dict:
+    row = {
+        "target_profile_id": target_profile_id,
+        "username": target_profile_id,
+        "full_name": None,
+        "fetch_status": "partial",
+        "is_deactivated": None,
+        "metadata_fetched_at": None,
+        "relationships_fetched_at": None,
+        "last_error": None,
+        "update_date": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def _live_map(
+    monkeypatch,
+    existing_rows: dict[str, dict],
+    *,
+    fake_user_data=None,
+    fake_raise=None,
+    max_checks: int = 50,
+) -> tuple[dict[str, bool], set[str]]:
     upserts: list[dict] = []
 
     def capture_upsert(**kwargs):
@@ -124,10 +149,7 @@ def test_live_deactivated_map_marks_empty_and_fetch_errors(monkeypatch):
     monkeypatch.setattr(
         diff_accessibility.db_service,
         "get_target_profile",
-        lambda **kwargs: {
-            "fetch_status": "partial",
-            "username": kwargs["target_profile_id"],
-        },
+        lambda **kwargs: existing_rows.get(kwargs["target_profile_id"]),
     )
     monkeypatch.setattr(
         diff_accessibility.db_service,
@@ -135,35 +157,132 @@ def test_live_deactivated_map_marks_empty_and_fetch_errors(monkeypatch):
         capture_upsert,
     )
 
-    def fake_followers(**kwargs):
-        if kwargs["target_user_id"] == "broken":
-            raise ii.RelationshipFetchError("edge_followed_by", "target unavailable")
-        return []
+    def fake_user_data_call(**kwargs):
+        if fake_raise is not None:
+            raise fake_raise
+        return fake_user_data
 
     monkeypatch.setattr(
         diff_accessibility.instagram_gateway,
-        "get_target_followers_v2",
-        fake_followers,
-    )
-    monkeypatch.setattr(
-        diff_accessibility.instagram_gateway,
-        "get_target_following_v2",
-        lambda **kwargs: [],
+        "get_target_user_data",
+        fake_user_data_call,
     )
 
-    result = diff_accessibility.live_deactivated_map(
+    deactivated_map, checked_ids = diff_accessibility.live_deactivated_map(
         app_user_id="app_1",
         reference_profile_id="ig_1",
         profile=ii.InstagramProfile("csrf", "session", "ig_1"),
-        target_profile_ids={"empty", "broken"},
-        fetch_at_max=10,
+        target_profile_ids=set(existing_rows),
         caller_service="tests",
-        caller_method="test_live_deactivated_map_marks_empty_and_fetch_errors",
+        caller_method="test_live_deactivated_map",
+        max_checks=max_checks,
+    )
+    assert checked_ids <= set(existing_rows)
+    return deactivated_map, checked_ids
+
+
+def test_live_deactivated_map_user_object_means_active(monkeypatch):
+    user_data = {
+        "id": "101",
+        "pk": "101",
+        "username": "alice",
+        "full_name": "Alice",
+        "is_private": False,
+        "is_verified": True,
+        "follower_count": 42,
+        "following_count": 7,
+        "friendship_status": {
+            "following": True,
+            "followed_by": True,
+            "blocking": False,
+        },
+    }
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"101": _existing_row("101")},
+        fake_user_data=user_data,
     )
 
-    assert result == {"broken": True, "empty": True}
-    assert {item["target_profile_id"] for item in upserts} == {"broken", "empty"}
-    assert all(item["is_deactivated"] is True for item in upserts)
+    assert deactivated_map == {"101": False}
+    assert checked_ids == {"101"}
+
+
+def test_live_deactivated_map_errors_payload_means_not_accessible(monkeypatch):
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"202": _existing_row("202")},
+        fake_user_data={"errors": [{"message": "field_exception", "code": 16}]},
+    )
+
+    assert deactivated_map == {"202": True}
+    assert checked_ids == {"202"}
+
+
+def test_live_deactivated_map_transport_error_keeps_existing_decision(monkeypatch):
+    existing = _existing_row(
+        "202",
+        is_deactivated=False,
+        fetch_status="live",
+        update_date="2020-01-01T00:00:00.000000",
+    )
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"202": existing},
+        fake_raise=requests.exceptions.RequestException("rate limited"),
+    )
+
+    assert deactivated_map == {}
+    assert checked_ids == {"202"}
+
+
+def test_live_deactivated_map_reuses_fresh_stored_decision(monkeypatch):
+    from datetime import datetime
+
+    existing = _existing_row(
+        "303",
+        is_deactivated=True,
+        fetch_status="live",
+        update_date=datetime.now().isoformat(),
+    )
+
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"303": existing},
+        fake_user_data={"id": "303", "username": "should_not_be_called"},
+    )
+
+    assert deactivated_map == {"303": True}
+    assert checked_ids == set()
+
+
+def test_live_deactivated_map_stale_decision_forces_live_check(monkeypatch):
+    existing = _existing_row(
+        "303",
+        is_deactivated=True,
+        fetch_status="live",
+        update_date="2020-01-01T00:00:00.000000",
+    )
+
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"303": existing},
+        fake_user_data={"id": "303", "username": "back_online"},
+    )
+
+    assert deactivated_map == {"303": False}
+    assert checked_ids == {"303"}
+
+
+def test_live_deactivated_map_respects_budget(monkeypatch):
+    deactivated_map, checked_ids = _live_map(
+        monkeypatch,
+        {"a": _existing_row("a"), "b": _existing_row("b")},
+        fake_user_data={"id": "x", "username": "x"},
+        max_checks=1,
+    )
+
+    assert len(checked_ids) == 1
+    assert len(deactivated_map) == 1
 
 
 def test_apply_account_accessibility_to_unfollowers_only_updates_unfollowers():

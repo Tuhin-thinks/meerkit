@@ -94,6 +94,12 @@ SCAN_STALE_STARTUP_GRACE_SECONDS = int(
 ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS = int(
     os.environ.get("ACCESSIBILITY_DB_STATUS_MAX_AGE_HOURS", "24")
 )
+# Maximum number of live account-accessibility checks performed per scan or
+# diff refresh. Targets beyond the cap keep their existing accessibility state
+# and are re-evaluated by a later scan/refresh. Bounds Instagram read volume.
+MAX_LIVE_DEACTIVATION_CHECKS_PER_SCAN = int(
+    os.environ.get("MAX_LIVE_DEACTIVATION_CHECKS_PER_SCAN", "50")
+)
 # Default and maximum day-window for /history responses.
 HISTORY_DEFAULT_DAYS = int(os.environ.get("HISTORY_DEFAULT_DAYS", "7"))
 HISTORY_MAX_DAYS = int(os.environ.get("HISTORY_MAX_DAYS", "7"))

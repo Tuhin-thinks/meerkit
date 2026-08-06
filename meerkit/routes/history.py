@@ -325,14 +325,14 @@ def refresh_diff_accessibility(diff_id: str):
     )
 
     target_profile_ids = _collect_target_profile_ids(diff, list_keys)
+    deactivated_map: dict[str, bool] = {}
     if target_profile_ids:
         profile = _build_profile(app_user_id, reference_profile_id)
-        deactivated_map = live_deactivated_map(
+        deactivated_map, _checked_ids = live_deactivated_map(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,
             profile=profile,
             target_profile_ids=target_profile_ids,
-            fetch_at_max=2,
             caller_service="history_api",
             caller_method="refresh_diff_accessibility",
         )
