@@ -255,7 +255,7 @@ async function loadFollowingList() {
     followingLoading.value = true;
     followingError.value = null;
     try {
-        const res = await getAutomationFollowingUsers();
+        const res = await getAutomationFollowingUsers(props.profileId);
         followingList.value = res.users;
         followingTotals.value = {
             followersTotal: res.followers_total,

@@ -3,8 +3,9 @@ import logging
 from collections.abc import Callable
 from typing import TypeVar
 
-import insta_interface as ii
 import requests
+
+import insta_interface as ii
 from meerkit.config import LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED
 from meerkit.services import user_details_cache
 from meerkit.services.curl_pattern_service import (
@@ -197,12 +198,11 @@ class InstagramGateway:
         runtime_values: dict | None = None,
         max_pages: int = 50,
         page_delay: float = 0.3,
-        increment_by: int | None = None,
     ) -> dict:
         """Make a paginated request following next_max_id until exhausted.
 
-        If increment_by is set, max_id is incremented numerically (for following).
-        Otherwise, next_max_id from the response is used (for followers).
+        Uses the pagination cursor (max_id/next_max_id) returned by the response
+        to fetch subsequent pages.
 
         Returns a merged dict with "users" list from all pages.
         """
@@ -211,7 +211,6 @@ class InstagramGateway:
         merged_users: list[dict] = []
         current_runtime = dict(runtime_values or {})
         last_raw: dict = {}
-        page_num = 0
 
         for _ in range(max_pages):
             raw = self._pattern_call(
@@ -229,14 +228,10 @@ class InstagramGateway:
             if not page_users:
                 break
 
-            if increment_by is not None:
-                page_num += 1
-                current_runtime["max_id"] = page_num * increment_by
-            else:
-                next_max_id = raw.get("next_max_id")
-                if not next_max_id:
-                    break
-                current_runtime["max_id"] = next_max_id
+            next_max_id = raw.get("next_max_id") or raw.get("max_id")
+            if not next_max_id:
+                break
+            current_runtime["max_id"] = next_max_id
 
             time.sleep(page_delay)
 
@@ -531,7 +526,6 @@ class InstagramGateway:
                     "target_user_id": target_user_id,
                     "first": fetch_at_max,
                 },
-                increment_by=12,
             )
             return _parse_user_records(raw, "following")
 
@@ -614,7 +608,6 @@ class InstagramGateway:
                     "target_user_id": profile.user_id,
                     "first": fetch_at_max,
                 },
-                increment_by=12,
             )
             return _parse_user_records(raw, "following")
 

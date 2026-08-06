@@ -1633,10 +1633,11 @@ def _get_cached_profile(app_user_id: str, reference_profile_id: str) -> ii.Insta
         profile_cache = {}
         _THREAD_LOCAL.profile_cache = profile_cache
 
-    cached_profile = profile_cache.get(app_user_id)
+    cache_key = (app_user_id, reference_profile_id)
+    cached_profile = profile_cache.get(cache_key)
     if cached_profile is not None:
         return cached_profile
 
     profile = _build_profile(app_user_id, reference_profile_id)
-    profile_cache[app_user_id] = profile
+    profile_cache[cache_key] = profile
     return profile

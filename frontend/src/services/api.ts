@@ -34,6 +34,7 @@ import type {
 import type {
   ApiCurlPattern,
   CurlParseResult,
+  PatternProjection,
   PatternTestResult,
 } from '../types/apiPattern'
 
@@ -262,10 +263,10 @@ export const cancelScan = () =>
 
 // ── Automation ─────────────────────────────────────────────────────────────────
 
-export const getAutomationFollowingUsers = () =>
+export const getAutomationFollowingUsers = (profileId?: string) =>
   http
     .get<FollowingUsersResponse>('/automation/following-users', {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
       timeout: 300_000,
     })
     .then((r) => r.data)
@@ -476,6 +477,11 @@ export const testCurlPattern = (internalName: string, runtimeValues?: Record<str
 
 export const generateCurlScript = (internalName: string, profileId?: string) =>
   http.post<{ script: string }>(`/curl-patterns/${encodeURIComponent(internalName)}/generate`, {}, {
+    params: { profile_id: profileId || activeInstagramUserId },
+  }).then((r) => r.data)
+
+export const projectCurlPattern = (internalName: string, cases?: Array<Record<string, unknown>>, profileId?: string) =>
+  http.post<PatternProjection>(`/curl-patterns/${encodeURIComponent(internalName)}/project`, { cases }, {
     params: { profile_id: profileId || activeInstagramUserId },
   }).then((r) => r.data)
 

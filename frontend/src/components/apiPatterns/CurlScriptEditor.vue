@@ -5,6 +5,7 @@ import {
   storeCurlPattern,
   getCurlPattern,
   generateCurlScript,
+  projectCurlPattern,
   testCurlPattern,
   deleteCurlPattern,
   getPreference,
@@ -40,6 +41,10 @@ const scriptLoading = ref(false);
 const testResult = ref<PatternTestResult | null>(null);
 const testLoading = ref(false);
 const testError = ref("");
+
+const runtimeKeys = ref<string[]>([]);
+const runtimeValues = ref<Record<string, string | boolean>>({});
+const runtimeLoading = ref(false);
 
 const saveLoading = ref(false);
 const saveError = ref("");
@@ -105,6 +110,24 @@ async function savePreferences() {
   }
 }
 
+async function loadRuntimeValues() {
+  if (!savedPattern.value) return;
+  runtimeLoading.value = true;
+  try {
+    const projection = await projectCurlPattern(props.internalName, undefined, props.profileId);
+    runtimeKeys.value = projection.runtime_keys;
+    runtimeValues.value = {};
+    for (const key of projection.runtime_keys) {
+      const value = projection.defaults[key];
+      runtimeValues.value[key] = value !== undefined ? value : "";
+    }
+  } catch {
+    runtimeKeys.value = [];
+  } finally {
+    runtimeLoading.value = false;
+  }
+}
+
 async function loadSaved() {
   _loadingSaved = true;
   isLoading.value = true;
@@ -124,6 +147,7 @@ async function loadSaved() {
       parseError.value = "";
       parseResult.value = null;
       hasUnsavedChanges.value = false;
+      void loadRuntimeValues();
     }
     if (prefs && !pattern) {
       selectedCookies.value = prefs.selected_cookies;
@@ -205,7 +229,11 @@ async function handleTest() {
   testError.value = "";
   testResult.value = null;
   try {
-    testResult.value = await testCurlPattern(props.internalName, undefined, props.profileId);
+    testResult.value = await testCurlPattern(
+      props.internalName,
+      { ...runtimeValues.value },
+      props.profileId,
+    );
   } catch (err: unknown) {
     testError.value = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? "Test failed";
   } finally {
@@ -414,6 +442,42 @@ loadSaved();
             @select-all="selectAll('variables')"
             @deselect-all="deselectAll('variables')"
           />
+        </div>
+
+        <!-- Runtime values -->
+        <div
+          v-if="runtimeKeys.length"
+          class="rounded-lg border border-white/[0.06] bg-black/20 p-3"
+        >
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              Runtime values
+            </p>
+            <p v-if="runtimeLoading" class="text-[10px] text-slate-500">Loading...</p>
+            <p v-else class="text-[10px] text-slate-500">Sent with Test requests</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div
+              v-for="key in runtimeKeys"
+              :key="key"
+              class="flex items-center gap-2"
+            >
+              <label class="text-[11px] font-mono text-slate-400 w-24 shrink-0">{{ key }}</label>
+              <input
+                v-if="key === 'enable_integrity_filters'"
+                v-model="runtimeValues[key]"
+                type="checkbox"
+                class="accent-violet-500"
+              />
+              <input
+                v-else
+                v-model="runtimeValues[key]"
+                type="text"
+                class="input-dark w-full text-xs font-mono"
+                :placeholder="key === 'max_id' ? 'leave empty for page 1' : key === 'after' ? 'leave empty for first page' : ''"
+              />
+            </div>
+          </div>
         </div>
 
         <!-- Save / Generate / Test -->

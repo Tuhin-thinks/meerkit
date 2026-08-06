@@ -47,4 +47,31 @@ export interface PatternTestResult {
   success: boolean
 }
 
+export interface ProjectedField {
+  name: string
+  kind: "constant" | "runtime" | "session"
+  value: string
+  omitted: boolean
+  nested?: ProjectedField[]
+}
+
+export interface ProjectedCase {
+  runtime_values: Record<string, string | boolean>
+  url: string
+  headers: Record<string, string>
+  cookies: Record<string, string>
+  query_params: ProjectedField[]
+  body: string | null
+  body_fields: ProjectedField[]
+}
+
+export interface PatternProjection {
+  internal_name: string
+  display_name: string
+  http_method: string
+  runtime_keys: string[]
+  defaults: Record<string, string | boolean>
+  cases: ProjectedCase[]
+}
+
 

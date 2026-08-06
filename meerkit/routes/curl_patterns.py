@@ -1,25 +1,25 @@
 import logging
 from typing import cast
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 
 from meerkit.routes import get_active_context
+from meerkit.services import auth_service
 from meerkit.services.curl_pattern_service import (
+    default_runtime_values,
     delete_pattern,
     extract_session_from_curl_pattern,
     get_pattern,
     get_preference,
     list_patterns,
     parse_curl,
+    project_pattern,
     set_preference,
     store_pattern,
     test_pattern,
     update_pattern,
 )
-from meerkit.services.script_generator import (
-    collect_runtime_keys,
-    generate_script,
-)
+from meerkit.services.script_generator import generate_script
 from curl_to_python import parse_curl_command as _curl_parse, parse_data as _curl_parse_data, build_request_components as _curl_build_components
 
 logger = logging.getLogger(__name__)
@@ -37,16 +37,31 @@ _INTERNAL_NAMES = frozenset({
 
 
 def _get_app_and_ig_user() -> tuple[str, str, dict]:
-    instagram_user_id = request.args.get("profile_id") or request.args.get(
+    """
+    Extract app_user_id and instagram_user_id from request args or session,
+    prioritizing request args when provided.
+    """
+    request_profile_id = request.args.get("profile_id") or request.args.get(
         "instagram_user_id"
     )
-    app_user_id, context = get_active_context(instagram_user_id)
+
+    app_user_id, context = get_active_context(request_profile_id)
     if not app_user_id:
         body, status = context
         raise _api_error(body["error"], status, body["code"])
-    if not instagram_user_id:
-        raise _api_error("profile_id is required", 400, "validation_error")
-    return app_user_id, instagram_user_id, cast(dict, context)
+
+    resolved_instagram_user_id = request_profile_id or session.get("active_instagram_user_id")
+    if not resolved_instagram_user_id:
+        resolved_instagram_user_id = auth_service.get_active_instagram_user_id(app_user_id)
+
+    if not resolved_instagram_user_id:
+        raise _api_error(
+            "No active Instagram user found for this app user",
+            400,
+            "missing_instagram_user",
+        )
+
+    return app_user_id, resolved_instagram_user_id, cast(dict, context)
 
 
 class _ApiError(Exception):
@@ -150,8 +165,13 @@ def handle_delete(internal_name: str):
 @bp.post("/<internal_name>/test")
 def handle_test(internal_name: str):
     app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
-    runtime_values = request.get_json(silent=True) or {}
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
+    if not pattern:
+        return jsonify({"error": "Pattern not found", "code": "not_found"}), 404
+
+    requested = request.get_json(silent=True) or {}
     session_values = extract_session_from_curl_pattern(app_user_id, reference_profile_id, internal_name)
+    runtime_values = {**default_runtime_values(pattern, session_values), **requested}
 
     result = test_pattern(
         app_user_id=app_user_id,
@@ -161,6 +181,23 @@ def handle_test(internal_name: str):
         runtime_values=runtime_values,
     )
     return jsonify(result), 200
+
+
+@bp.post("/<internal_name>/project")
+def handle_project(internal_name: str):
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
+    body = request.get_json(silent=True) or {}
+    cases = body.get("cases")
+    try:
+        result = project_pattern(
+            app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
+            internal_name=internal_name,
+            cases=cases,
+        )
+        return jsonify(result), 200
+    except Exception as exc:
+        return jsonify({"error": f"Failed to project pattern: {exc}", "code": "projection_error"}), 400
 
 
 @bp.post("/<internal_name>/generate")
@@ -178,21 +215,7 @@ def handle_generate(internal_name: str):
     raw_data = _curl_parse_data(raw_data_str) if raw_data_str else {}
     _, _, raw_variables = _curl_build_components(raw_data)
 
-    runtime_keys = collect_runtime_keys(raw_cookies) | collect_runtime_keys(raw_headers) | collect_runtime_keys(raw_data) | collect_runtime_keys(raw_url) | collect_runtime_keys(raw_variables or {})
-
-    user_id = session_values.get("ds_user_id", "")
-    runtime_values: dict[str, object] = {}
-    for rk in runtime_keys:
-        if rk in ("id", "target_user_id", "ds_user_id"):
-            runtime_values[rk] = user_id
-        elif rk == "username":
-            runtime_values[rk] = user_id
-        elif rk == "enable_integrity_filters":
-            runtime_values[rk] = True
-        elif rk == "first":
-            runtime_values[rk] = 50
-        else:
-            runtime_values[rk] = ""
+    runtime_values = default_runtime_values(pattern, session_values)
 
     script = generate_script(
         internal_name=str(pattern["internal_name"]),

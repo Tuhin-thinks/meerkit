@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { listCurlPatterns } from "../../services/api";
 import type { ApiCurlPattern } from "../../types/apiPattern";
 import CurlScriptEditor from "./CurlScriptEditor.vue";
+import ProjectionTab from "./ProjectionTab.vue";
 
 const props = defineProps<{
   profileId: string;
@@ -17,6 +18,7 @@ const INTERNAL_NAMES: { name: string; label: string }[] = [
   { name: "search_user", label: "Search User" },
 ];
 
+const activeTab = ref<"editor" | "projection">("editor");
 const patterns = ref<ApiCurlPattern[]>([]);
 const loading = ref(false);
 const editingInternalName = ref<string | null>(null);
@@ -73,39 +75,66 @@ loadPatterns();
       </p>
     </div>
 
-    <!-- Loading -->
-    <p v-if="loading" class="text-sm text-slate-400">Loading patterns...</p>
-
-    <!-- Pattern list -->
-    <div v-else class="space-y-2">
-      <div
-        v-for="item in INTERNAL_NAMES"
-        :key="item.name"
-        class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 transition hover:border-white/[0.12]"
+    <!-- Tabs -->
+    <div class="flex items-center gap-1 border-b border-white/[0.07] pb-3">
+      <button
+        type="button"
+        class="text-xs px-3 py-1.5 rounded-lg font-medium transition"
+        :class="activeTab === 'editor' ? 'bg-violet-500/15 text-violet-200 border border-violet-400/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'"
+        @click="activeTab = 'editor'"
       >
-        <div class="flex items-center justify-between">
-          <div class="min-w-0">
-            <p class="text-sm font-semibold text-slate-200">{{ item.label }}</p>
-            <p class="text-xs font-mono text-slate-500">{{ item.name }}</p>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <span
-              class="text-[10px] font-medium px-2 py-0.5 rounded-full border"
-              :class="statusClass(patterns.find(p => p.internal_name === item.name)) + ' border-current/20'"
-            >
-              {{ statusLabel(patterns.find(p => p.internal_name === item.name)) }}
-            </span>
-            <button
-              type="button"
-              class="text-xs px-2.5 py-1 rounded-lg font-medium border border-violet-400/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/15 transition"
-              @click="editPattern(item.name)"
-            >
-              {{ patterns.find(p => p.internal_name === item.name) ? "Edit" : "Configure" }}
-            </button>
+        Editor
+      </button>
+      <button
+        type="button"
+        class="text-xs px-3 py-1.5 rounded-lg font-medium transition"
+        :class="activeTab === 'projection' ? 'bg-violet-500/15 text-violet-200 border border-violet-400/30' : 'text-slate-400 hover:text-slate-200 border border-transparent'"
+        @click="activeTab = 'projection'"
+      >
+        Projection
+      </button>
+    </div>
+
+    <ProjectionTab
+      v-if="activeTab === 'projection'"
+      :profile-id="profileId"
+    />
+
+    <template v-else>
+      <!-- Loading -->
+      <p v-if="loading" class="text-sm text-slate-400">Loading patterns...</p>
+
+      <!-- Pattern list -->
+      <div v-else class="space-y-2">
+        <div
+          v-for="item in INTERNAL_NAMES"
+          :key="item.name"
+          class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 transition hover:border-white/[0.12]"
+        >
+          <div class="flex items-center justify-between">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-slate-200">{{ item.label }}</p>
+              <p class="text-xs font-mono text-slate-500">{{ item.name }}</p>
+            </div>
+            <div class="flex items-center gap-2 shrink-0">
+              <span
+                class="text-[10px] font-medium px-2 py-0.5 rounded-full border"
+                :class="statusClass(patterns.find(p => p.internal_name === item.name)) + ' border-current/20'"
+              >
+                {{ statusLabel(patterns.find(p => p.internal_name === item.name)) }}
+              </span>
+              <button
+                type="button"
+                class="text-xs px-2.5 py-1 rounded-lg font-medium border border-violet-400/30 bg-violet-500/10 text-violet-300 hover:bg-violet-500/15 transition"
+                @click="editPattern(item.name)"
+              >
+                {{ patterns.find(p => p.internal_name === item.name) ? "Edit" : "Configure" }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
 
     <!-- Editor modal -->
     <Teleport to="body">
