@@ -263,10 +263,13 @@ export const cancelScan = () =>
 
 // ── Automation ─────────────────────────────────────────────────────────────────
 
-export const getAutomationFollowingUsers = (profileId?: string) =>
+export const getAutomationFollowingUsers = (profileId?: string, forceRefresh = false) =>
   http
     .get<FollowingUsersResponse>('/automation/following-users', {
-      params: { profile_id: profileId || activeInstagramUserId },
+      params: {
+        profile_id: profileId || activeInstagramUserId,
+        force_refresh: forceRefresh ? 1 : undefined,
+      },
       timeout: 300_000,
     })
     .then((r) => r.data)

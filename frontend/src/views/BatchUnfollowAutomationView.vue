@@ -251,11 +251,14 @@ const runningProgress = computed(() => {
 
 // ── Browse mode methods ────────────────────────────────────────────────
 
-async function loadFollowingList() {
+async function loadFollowingList(forceRefresh = false) {
     followingLoading.value = true;
     followingError.value = null;
     try {
-        const res = await getAutomationFollowingUsers(props.profileId);
+        const res = await getAutomationFollowingUsers(
+            props.profileId,
+            forceRefresh,
+        );
         followingList.value = res.users;
         followingTotals.value = {
             followersTotal: res.followers_total,
@@ -653,11 +656,11 @@ const protectedPlaceholder = [
                             <button
                                 class="btn-ghost rounded-lg px-4 py-2 text-sm font-medium"
                                 :disabled="followingLoading"
-                                @click="loadFollowingList"
+                                @click="loadFollowingList(followingLoaded)"
                             >
                                 <span v-if="followingLoading">Loading…</span>
                                 <span v-else-if="followingLoaded"
-                                    >↺ Refresh</span
+                                    >↺ Refresh (live)</span
                                 >
                                 <span v-else>Load Current Following</span>
                             </button>

@@ -46,7 +46,11 @@ from meerkit.services.automation_service import (
     remove_safelist_entry,
 )
 from meerkit.services.downloader import enqueue_image_download
-from meerkit.services.instagram_gateway import instagram_gateway
+from meerkit.services.instagram_gateway import (
+    extract_friendship_flags,
+    extract_relationship_totals,
+    instagram_gateway,
+)
 
 bp = Blueprint("automation", __name__, url_prefix="/api/automation")
 logger = logging.getLogger(__name__)
@@ -55,6 +59,7 @@ logger = logging.getLogger(__name__)
 def _error_response(exc: Exception):
     body, status = map_exception_to_response(exc)
     return jsonify(body), status
+
 
 _VALID_LIST_TYPES = {"do_not_follow", "never_unfollow"}
 _READ_USAGE_CATEGORIES = {
@@ -175,23 +180,27 @@ def _cache_efficiency_payload(app_user_id: str, reference_profile_id: str) -> di
             "cache_hits": all_time_hits_total,
             "api_calls": all_time_api_total,
             "total_reads": all_time_reads_total,
-            "efficiency_percent": round(
-                (all_time_hits_total / all_time_reads_total) * 100,
-                2,
-            )
-            if all_time_reads_total > 0
-            else 0.0,
+            "efficiency_percent": (
+                round(
+                    (all_time_hits_total / all_time_reads_total) * 100,
+                    2,
+                )
+                if all_time_reads_total > 0
+                else 0.0
+            ),
         },
         "last_24h": {
             "cache_hits": last_24h_hits_total,
             "api_calls": last_24h_api_total,
             "total_reads": last_24h_reads_total,
-            "efficiency_percent": round(
-                (last_24h_hits_total / last_24h_reads_total) * 100,
-                2,
-            )
-            if last_24h_reads_total > 0
-            else 0.0,
+            "efficiency_percent": (
+                round(
+                    (last_24h_hits_total / last_24h_reads_total) * 100,
+                    2,
+                )
+                if last_24h_reads_total > 0
+                else 0.0
+            ),
         },
         "cache_size": {
             **cache_size,
@@ -410,17 +419,12 @@ def _load_following_user_counts(
             "being_followed_by_account": None,
         }
 
-    follower_count = summary.get("account_followers_count")
-    following_count = summary.get("account_following_count")
-    being_followed_by_account = summary.get("being_followed_by_account")
+    follower_count, following_count = extract_relationship_totals(summary)
+    _, being_followed_by_account = extract_friendship_flags(summary)
     return {
-        "follower_count": follower_count if isinstance(follower_count, int) else None,
-        "following_count": following_count
-        if isinstance(following_count, int)
-        else None,
-        "being_followed_by_account": being_followed_by_account
-        if isinstance(being_followed_by_account, bool)
-        else None,
+        "follower_count": follower_count,
+        "following_count": following_count,
+        "being_followed_by_account": being_followed_by_account,
     }
 
 
@@ -557,9 +561,14 @@ def prepare_unfollow():
     }
 
     if not candidate_lines and not use_auto_discovery:
-        return jsonify(
-            {"error": "candidates list is required (or set use_auto_discovery=true)"}
-        ), 400
+        return (
+            jsonify(
+                {
+                    "error": "candidates list is required (or set use_auto_discovery=true)"
+                }
+            ),
+            400,
+        )
 
     try:
         result = prepare_batch_unfollow(
@@ -726,9 +735,10 @@ def list_actions():
 @bp.get("/safelists/<list_type>")
 def get_safelist(list_type: str):
     if list_type not in _VALID_LIST_TYPES:
-        return jsonify(
-            {"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}
-        ), 400
+        return (
+            jsonify({"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}),
+            400,
+        )
 
     app_user_id, context = _active_scope()
     if not app_user_id:
@@ -745,9 +755,10 @@ def get_safelist(list_type: str):
 @bp.post("/safelists/<list_type>")
 def add_to_safelist(list_type: str):
     if list_type not in _VALID_LIST_TYPES:
-        return jsonify(
-            {"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}
-        ), 400
+        return (
+            jsonify({"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}),
+            400,
+        )
 
     app_user_id, context = _active_scope()
     if not app_user_id:
@@ -778,9 +789,10 @@ def add_to_safelist(list_type: str):
 @bp.delete("/safelists/<list_type>/<path:identity_key>")
 def delete_from_safelist(list_type: str, identity_key: str):
     if list_type not in _VALID_LIST_TYPES:
-        return jsonify(
-            {"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}
-        ), 400
+        return (
+            jsonify({"error": f"list_type must be one of {sorted(_VALID_LIST_TYPES)}"}),
+            400,
+        )
 
     app_user_id, context = _active_scope()
     if not app_user_id:
@@ -849,11 +861,14 @@ def add_alt_account_link_entries():
     if not isinstance(linkedin_accounts, list):
         return jsonify({"error": "linkedin_accounts must be a list"}), 400
     if not alternative_accounts and not linkedin_accounts:
-        return jsonify(
-            {
-                "error": "Provide at least one alternative account or one LinkedIn account"
-            }
-        ), 400
+        return (
+            jsonify(
+                {
+                    "error": "Provide at least one alternative account or one LinkedIn account"
+                }
+            ),
+            400,
+        )
 
     try:
         result = add_alt_account_links(

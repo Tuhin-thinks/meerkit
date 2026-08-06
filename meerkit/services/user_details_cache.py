@@ -6,15 +6,16 @@ Cache layout::
     data/cache/{app_user_id}/{instagram_user_id}/targets/{target_user_id}_user_details.json
 
 All public functions use atomic temp-file writes so partial writes never leave
-a corrupt file on disk.  Call ``invalidate()`` / ``invalidate_target()`` to
-force a fresh API fetch on the next request.
+a corrupt file on disk.  Entries older than ``USER_DETAILS_CACHE_TTL_HOURS``
+are treated as expired on read; call ``invalidate()`` / ``invalidate_target()``
+to force a fresh API fetch immediately.
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from meerkit.config import CACHE_DIR
+from meerkit.config import CACHE_DIR, USER_DETAILS_CACHE_TTL_HOURS
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -35,14 +36,30 @@ def _target_path(app_user_id: str, instagram_user_id: str, target_user_id: str) 
     )
 
 
+def _is_expired(cached_at: object) -> bool:
+    """Return True when a cached entry is older than the configured TTL."""
+    if USER_DETAILS_CACHE_TTL_HOURS <= 0:
+        return True
+    if not isinstance(cached_at, str):
+        return True
+    try:
+        stored_at = datetime.fromisoformat(cached_at)
+    except ValueError:
+        return True
+    return datetime.now() - stored_at > timedelta(hours=USER_DETAILS_CACHE_TTL_HOURS)
+
+
 def _read(path: Path) -> dict | None:
     if not path.exists():
         return None
     try:
         with path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
     except (json.JSONDecodeError, OSError):
         return None
+    if not isinstance(data, dict) or _is_expired(data.get("cached_at")):
+        return None
+    return data
 
 
 def _write(path: Path, data: dict) -> None:

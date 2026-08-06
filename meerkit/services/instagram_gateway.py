@@ -6,7 +6,10 @@ from typing import TypeVar
 import requests
 
 import insta_interface as ii
-from meerkit.config import LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED
+from meerkit.config import (
+    LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED,
+    USER_DETAILS_CACHE_TTL_HOURS,
+)
 from meerkit.services import user_details_cache
 from meerkit.services.curl_pattern_service import (
     build_request,
@@ -103,14 +106,15 @@ def _deserialize_follower_records(payload: object) -> list[ii.FollowerUserRecord
     return records
 
 
-def _extract_relationship_totals(
+def extract_relationship_totals(
     user_data: dict[str, object],
 ) -> tuple[int | None, int | None]:
     """Extract follower/following totals from profile user data.
 
-    Handles GraphQL (edge_followed_by/edge_follow) and REST/normalized
-    (account_followers_count/follower_count) formats. These totals tell the
-    paginated fetch how many pages it needs to exhaust the full list.
+    Handles GraphQL (edge_followed_by/edge_follow or follower_count/
+    following_count) and REST/normalized (account_followers_count/
+    account_following_count) formats. These totals tell the paginated fetch how
+    many pages it needs to exhaust the full list.
     """
     edge_followed_by = user_data.get("edge_followed_by")
     edge_follow = user_data.get("edge_follow")
@@ -140,7 +144,44 @@ def _extract_relationship_totals(
     return follower_count, following_count
 
 
-def _parse_user_records(raw: dict, relationship_type: str) -> list[ii.FollowerUserRecord]:
+def extract_friendship_flags(
+    user_data: dict[str, object],
+) -> tuple[bool | None, bool | None]:
+    """Extract follow/followed-by flags from profile user data.
+
+    Modern GraphQL exposes them under ``friendship_status`` (``following`` =
+    does the active account follow the target; ``followed_by`` = does the
+    target follow the active account). Legacy REST used top-level
+    ``me_following_account`` / ``being_followed_by_account`` booleans. Returns
+    ``(None, None)`` when the payload carries neither.
+    """
+    me_following: bool | None = None
+    followed_by: bool | None = None
+
+    friendship_status = user_data.get("friendship_status")
+    if isinstance(friendship_status, dict):
+        following = friendship_status.get("following")
+        if isinstance(following, bool):
+            me_following = following
+        followed_by_flag = friendship_status.get("followed_by")
+        if isinstance(followed_by_flag, bool):
+            followed_by = followed_by_flag
+
+    if me_following is None:
+        legacy = user_data.get("me_following_account")
+        if isinstance(legacy, bool):
+            me_following = legacy
+    if followed_by is None:
+        legacy = user_data.get("being_followed_by_account")
+        if isinstance(legacy, bool):
+            followed_by = legacy
+
+    return me_following, followed_by
+
+
+def _parse_user_records(
+    raw: dict, relationship_type: str
+) -> list[ii.FollowerUserRecord]:
     """Parse user records from either REST v1 or GraphQL response format.
 
     REST v1: {"users":[{"pk":"...","username":"...",...}]}
@@ -153,7 +194,9 @@ def _parse_user_records(raw: dict, relationship_type: str) -> list[ii.FollowerUs
         users = raw["users"]
     else:
         # GraphQL format
-        edge_key = "edge_followed_by" if relationship_type == "followers" else "edge_follow"
+        edge_key = (
+            "edge_followed_by" if relationship_type == "followers" else "edge_follow"
+        )
         edges = raw.get("data", {}).get("user", {}).get(edge_key, {}).get("edges", [])
         users = [edge.get("node", {}) for edge in edges]
 
@@ -232,7 +275,11 @@ class InstagramGateway:
                 extra={
                     "internal_name": internal_name,
                     "status_code": getattr(exc.response, "status_code", None),
-                    "response_text": getattr(exc.response, "text", "")[:200] if hasattr(exc.response, "text") else None,
+                    "response_text": (
+                        getattr(exc.response, "text", "")[:200]
+                        if hasattr(exc.response, "text")
+                        else None
+                    ),
                 },
             )
             raise
@@ -350,11 +397,15 @@ class InstagramGateway:
             and deserialize_from_cache is not None
             and not force_refresh
         ):
+            cache_max_age_hours: float | None = None
+            if category in ("user_data_fetch", "user_lookup"):
+                cache_max_age_hours = USER_DETAILS_CACHE_TTL_HOURS
             cache_hit, payload = load_gateway_response(
                 app_user_id=app_user_id,
                 instagram_user_id=instagram_user_id,
                 category=category,
                 key_parts=cache_key_parts,
+                max_age_hours=cache_max_age_hours,
             )
             if cache_hit:
                 instagram_api_usage_tracker.track_cache_hit(
@@ -576,7 +627,7 @@ class InstagramGateway:
             )
         except Exception:
             return None, None
-        return _extract_relationship_totals(user_data)
+        return extract_relationship_totals(user_data)
 
     def get_target_followers_v2(
         self,

@@ -41,6 +41,13 @@ LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED = _env_flag(
     "LEGACY_USER_DETAILS_CACHE_WRITE_ENABLED", True
 )
 
+# How long cached user-profile details (follower/following counts, followed-by
+# flags) stay fresh before the next read triggers a live re-fetch. Set to 0 to
+# always read live.
+USER_DETAILS_CACHE_TTL_HOURS = float(
+    os.environ.get("USER_DETAILS_CACHE_TTL_HOURS", "24")
+)
+
 # Instagram API interaction
 # Number of times to retry a follow/unfollow call before giving up on that action.
 INSTA_ACTION_RETRY_COUNT = int(os.environ.get("INSTA_ACTION_RETRY_COUNT", "3"))

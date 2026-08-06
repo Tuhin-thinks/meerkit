@@ -35,7 +35,10 @@ from meerkit.services.exceptions import (
     InvalidPredictionInputError,
     InvalidPrimaryAccountError,
 )
-from meerkit.services.instagram_gateway import instagram_gateway
+from meerkit.services.instagram_gateway import (
+    extract_friendship_flags,
+    instagram_gateway,
+)
 
 _USER_ID_RE = _re.compile(r"^\d+$")
 _USERNAME_RE = _re.compile(r"^[A-Za-z0-9._]+$")
@@ -325,7 +328,7 @@ def _prefetch_followed_by_flags(
         except Exception:
             return target_user_id, None
 
-        followed_by = summary.get("being_followed_by_account")
+        _, followed_by = extract_friendship_flags(summary)
         if not isinstance(followed_by, bool):
             return target_user_id, None
         return target_user_id, followed_by
@@ -1403,7 +1406,8 @@ def _check_right_follows_current_user(
         )
     except Exception:
         return False
-    return bool(summary.get("being_followed_by_account"))
+    _, followed_by = extract_friendship_flags(summary)
+    return followed_by is True
 
 
 def _process_right_targets_via_friendship_status(

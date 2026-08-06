@@ -1,6 +1,6 @@
 import hashlib
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from re import sub
 from typing import Any
@@ -10,6 +10,19 @@ from meerkit.config import CACHE_DIR
 CACHE_VERSION = 1
 _CACHE_NAMESPACE = "instagram_gateway"
 _CACHE_ROOT = CACHE_DIR
+
+
+def _is_expired(cached_at: object, max_age_hours: float) -> bool:
+    """Return True when a cached entry is older than ``max_age_hours``."""
+    if max_age_hours <= 0:
+        return True
+    if not isinstance(cached_at, str):
+        return True
+    try:
+        stored_at = datetime.fromisoformat(cached_at)
+    except ValueError:
+        return True
+    return datetime.now() - stored_at > timedelta(hours=max_age_hours)
 
 
 def _safe_fragment(value: str) -> str:
@@ -54,8 +67,13 @@ def load_gateway_response(
     instagram_user_id: str,
     category: str,
     key_parts: dict[str, object],
+    max_age_hours: float | None = None,
 ) -> tuple[bool, Any]:
-    """Load a cached gateway payload. Returns (hit, payload)."""
+    """Load a cached gateway payload. Returns (hit, payload).
+
+    When ``max_age_hours`` is set, entries older than that are treated as a
+    miss so callers re-fetch live data. ``None`` keeps the entry forever.
+    """
     cache_path = _cache_file_path(
         app_user_id=app_user_id,
         instagram_user_id=instagram_user_id,
@@ -82,6 +100,11 @@ def load_gateway_response(
         or envelope.get("instagram_user_id") != instagram_user_id
         or envelope.get("category") != category
         or envelope.get("key_parts") != expected_parts
+    ):
+        return False, None
+
+    if max_age_hours is not None and _is_expired(
+        envelope.get("cached_at"), max_age_hours
     ):
         return False, None
 

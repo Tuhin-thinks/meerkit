@@ -20,7 +20,10 @@ from meerkit.services.exceptions import (
     PredictionNotFoundError,
     TargetResolutionError,
 )
-from meerkit.services.instagram_gateway import instagram_gateway
+from meerkit.services.instagram_gateway import (
+    extract_friendship_flags,
+    instagram_gateway,
+)
 
 _PREDICTION_TTL = timedelta(days=PREDICTION_TTL_DAYS)
 _CACHE_FRESHNESS = timedelta(hours=PREDICTION_CACHE_FRESHNESS_HOURS)
@@ -1173,6 +1176,7 @@ def refresh_followback_prediction(
         reference_profile_id=reference_profile_id,
         target_profile_id=target_profile_id,
     )
+    me_following_flag, followed_by_flag = extract_friendship_flags(metadata)
     db_service.upsert_target_profile(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -1183,10 +1187,8 @@ def refresh_followback_prediction(
         following_count=metadata_following_count,
         is_private=bool(metadata.get("is_private", False)),
         is_verified=bool(metadata.get("is_verified", False)),
-        me_following_account=bool(metadata.get("me_following_account", False)),
-        being_followed_by_account=bool(
-            metadata.get("being_followed_by_account", False)
-        ),
+        me_following_account=me_following_flag is True,
+        being_followed_by_account=followed_by_flag is True,
         is_deactivated=(cached_target_profile or {}).get("is_deactivated"),
         fetch_status="metadata_only",
         metadata_fetched_at=metadata_time,
@@ -1314,6 +1316,7 @@ def refresh_followback_prediction(
             and not fetched_relationship_records["following"]
         )
 
+    me_following_flag, followed_by_flag = extract_friendship_flags(metadata)
     db_service.upsert_target_profile(
         app_user_id=app_user_id,
         reference_profile_id=reference_profile_id,
@@ -1324,10 +1327,8 @@ def refresh_followback_prediction(
         following_count=metadata_following_count,
         is_private=bool(metadata.get("is_private", False)),
         is_verified=bool(metadata.get("is_verified", False)),
-        me_following_account=bool(metadata.get("me_following_account", False)),
-        being_followed_by_account=bool(
-            metadata.get("being_followed_by_account", False)
-        ),
+        me_following_account=me_following_flag is True,
+        being_followed_by_account=followed_by_flag is True,
         is_deactivated=is_deactivated,
         fetch_status=fetch_status,
         metadata_fetched_at=metadata_time,
@@ -1367,7 +1368,7 @@ def refresh_followback_prediction(
             computed_at=computed_at,
             data_as_of=computed_at,
             outcome_status="confirmed"
-            if metadata.get("being_followed_by_account")
+            if extract_friendship_flags(metadata)[1] is True
             else "pending",
         )
         or {}
