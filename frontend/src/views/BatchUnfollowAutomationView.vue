@@ -335,8 +335,8 @@ async function prepare() {
             max_unfollow_count: maxUnfollowCount.value,
             skip_mutual: requireMutualHistoryCheck.value,
             skip_recent: skipRecentFollows.value,
-        });
-        const action = await getAutomationAction(result.action_id);
+        }, props.profileId);
+        const action = await getAutomationAction(result.action_id, props.profileId);
         registerAutomationJob(action);
         activeActionLock.value = action;
         stagedResult.value = result;
@@ -362,7 +362,7 @@ async function confirm() {
     phase.value = "confirming";
     actionError.value = null;
     try {
-        const action = await confirmAutomationAction(actionId);
+        const action = await confirmAutomationAction(actionId, props.profileId);
         registerAutomationJob(action);
         activeActionLock.value = action;
         currentAction.value = action;
@@ -428,7 +428,7 @@ async function cancel() {
         pollTimeout = null;
     }
     try {
-        await cancelAutomationAction(actionId);
+        await cancelAutomationAction(actionId, props.profileId);
     } catch {
         // best-effort
     }

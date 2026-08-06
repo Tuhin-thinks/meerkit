@@ -271,17 +271,17 @@ export const getAutomationFollowingUsers = (profileId?: string) =>
     })
     .then((r) => r.data)
 
-export const getAutomationCacheEfficiency = (instagramUserId?: string) =>
+export const getAutomationCacheEfficiency = (instagramUserId?: string, profileId?: string) =>
   http
     .get<AutomationCacheEfficiencyResponse>('/automation/cache-efficiency', {
-      params: { profile_id: instagramUserId || activeInstagramUserId },
+      params: { profile_id: instagramUserId || profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
-export const getAutomationCacheSize = (instagramUserId?: string) =>
+export const getAutomationCacheSize = (instagramUserId?: string, profileId?: string) =>
   http
     .get<AutomationCacheSizeResponse>('/automation/cache-size', {
-      params: { profile_id: instagramUserId || activeInstagramUserId },
+      params: { profile_id: instagramUserId || profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
@@ -305,10 +305,10 @@ export const prepareBatchUnfollow = (payload: {
   skip_mutual?: boolean
   skip_recent?: boolean
   use_auto_discovery?: boolean
-}) =>
+}, profileId?: string) =>
   http
     .post<AutomationActionResult>('/automation/batch-unfollow/prepare', payload, {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
@@ -317,31 +317,31 @@ export const prepareLeftRightCompare = (payload: {
   right_targets: string[]
   max_left_count?: number
   max_right_count?: number
-}) =>
+}, profileId?: string) =>
   http
     .post<AutomationActionResult>('/automation/left-right-compare/prepare', payload, {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
-export const confirmAutomationAction = (actionId: string) =>
+export const confirmAutomationAction = (actionId: string, profileId?: string) =>
   http
     .post<AutomationAction>(`/automation/actions/${actionId}/confirm`, null, {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
-export const cancelAutomationAction = (actionId: string) =>
+export const cancelAutomationAction = (actionId: string, profileId?: string) =>
   http
     .post<AutomationAction>(`/automation/actions/${actionId}/cancel`, null, {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
-export const getAutomationAction = (actionId: string) =>
+export const getAutomationAction = (actionId: string, profileId?: string) =>
   http
     .get<AutomationAction>(`/automation/actions/${actionId}`, {
-      params: { profile_id: activeInstagramUserId },
+      params: { profile_id: profileId || activeInstagramUserId },
     })
     .then((r) => r.data)
 
