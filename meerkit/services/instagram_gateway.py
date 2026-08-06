@@ -57,6 +57,34 @@ def _deserialize_user_pk(payload: object) -> str | None:
     return payload if isinstance(payload, str) else None
 
 
+def _mutation_succeeded(
+    raw: dict,
+    *,
+    root_field: str,
+    expected_following: bool,
+) -> bool:
+    """Detect a successful follow/unfollow GraphQL mutation response.
+
+    Modern usePolaris*Mutation responses carry the result under
+    ``data.<root_field>.friendship_status.following`` (e.g.
+    ``xdt_create_friendship`` for follow, ``xdt_destroy_friendship`` for
+    unfollow). Also accept the legacy web-form ``{"status": "ok"}`` payload.
+    Anything else is treated as failure.
+    """
+    if raw.get("status") == "ok":
+        return True
+    data = raw.get("data")
+    if not isinstance(data, dict):
+        return False
+    root = data.get(root_field)
+    if not isinstance(root, dict):
+        return False
+    friendship_status = root.get("friendship_status")
+    if not isinstance(friendship_status, dict):
+        return False
+    return friendship_status.get("following") == expected_following
+
+
 def _serialize_follower_records(records: list[ii.FollowerUserRecord]) -> object:
     return [record.__dict__ for record in records]
 
@@ -746,9 +774,20 @@ class InstagramGateway:
                     "username": target_username,
                 },
             )
-            if raw.get("status") == "ok":
-                return 200
-            return 400
+            if _mutation_succeeded(
+                raw, root_field="xdt_create_friendship", expected_following=True
+            ):
+                return 1
+            logger.warning(
+                "follow_user_by_id_failed",
+                extra={
+                    "event": "follow_user_by_id_failed",
+                    "target_username": target_username,
+                    "target_user_id": target_user_id,
+                    "response": str(raw)[:500],
+                },
+            )
+            return -1
 
         return self._tracked(
             app_user_id=app_user_id,
@@ -781,9 +820,20 @@ class InstagramGateway:
                     "username": target_username,
                 },
             )
-            if raw.get("status") == "ok":
-                return 200
-            return 400
+            if _mutation_succeeded(
+                raw, root_field="xdt_destroy_friendship", expected_following=False
+            ):
+                return 1
+            logger.warning(
+                "unfollow_user_by_id_failed",
+                extra={
+                    "event": "unfollow_user_by_id_failed",
+                    "target_username": target_username,
+                    "target_user_id": target_user_id,
+                    "response": str(raw)[:500],
+                },
+            )
+            return -1
 
         return self._tracked(
             app_user_id=app_user_id,

@@ -231,7 +231,14 @@ def test_follow_action_bypasses_cache(monkeypatch):
     monkeypatch.setattr(
         gateway,
         "_pattern_call",
-        lambda **kw: {"status": "ok"},
+        lambda **kw: {
+            "data": {
+                "xdt_create_friendship": {
+                    "friendship_status": {"following": True},
+                    "id": "55",
+                }
+            }
+        },
     )
 
     monkeypatch.setattr(
@@ -249,4 +256,4 @@ def test_follow_action_bypasses_cache(monkeypatch):
         caller_method="follow_action",
     )
 
-    assert result == 200
+    assert result == 1
