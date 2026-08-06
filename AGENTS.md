@@ -44,6 +44,12 @@ Open http://localhost:5173
 - Frontend: ESLint + vue-tsc (`npm run build` type-checks before bundling).
 - `.github/instructions/python.instructions.md` enforces typing style (Python 3.12 `X | None`, no `Optional`), error handling, and naming conventions. Follow it.
 
+## Cross-cutting change rules
+
+- **Update all dependent paths**: When changing a shared behavior (e.g. a gateway fetch method, an API parameter, a frontend component), update *every* caller of that behavior — scan flow, automation/batch-unfollow routes, workers, and tests — in the same change. Grep for all callers before editing.
+- **Use common paths for related features**: Related flows that do the same thing must share one implementation, not copy-pasted duplicates. Example: scan (`run_scan_for_api`) and the automation `/following-users` route both resolve the account's follower/following totals to size list pagination — both call the shared `InstagramGateway.resolve_relationship_totals()` helper in `meerkit/services/instagram_gateway.py`. When extending one, extend the shared helper so the others inherit it. Do not fork new private helpers per feature; remove old duplicates when a shared helper lands.
+- **Paginated list fetches exhaust real totals**: `_pattern_call_paginated` uses `expected_total` (the account/target's real follower/following count from profile data) to widen the page budget so fetches run until the list is exhausted, not until a cap. Always pass `expected_total` where the count is available or resolvable.
+
 ## Testing quirks
 
 - Test credentials go in `tests/.test.env` (not committed to prod env). VSCode launch config loads it for debug runs.
