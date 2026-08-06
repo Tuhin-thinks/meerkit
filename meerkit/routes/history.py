@@ -326,7 +326,7 @@ def refresh_diff_accessibility(diff_id: str):
 
     target_profile_ids = _collect_target_profile_ids(diff, list_keys)
     if target_profile_ids:
-        profile = _build_profile(app_user_id)
+        profile = _build_profile(app_user_id, reference_profile_id)
         deactivated_map = live_deactivated_map(
             app_user_id=app_user_id,
             reference_profile_id=reference_profile_id,

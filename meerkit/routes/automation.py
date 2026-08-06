@@ -255,7 +255,7 @@ def get_following_users():
     force_refresh = _query_flag("force_refresh")
 
     try:
-        profile = _build_profile(app_user_id)
+        profile = _build_profile(app_user_id, reference_profile_id)
         following_records = instagram_gateway.get_current_following_v2(
             app_user_id=app_user_id,
             instagram_user_id=reference_profile_id,
@@ -424,7 +424,7 @@ def _load_following_user_counts_bulk(
     )
     max_workers = max(1, min(configured_max, len(unique_user_ids)))
     if max_workers == 1:
-        profile = _build_profile(app_user_id)
+        profile = _build_profile(app_user_id, reference_profile_id)
         return {
             user_id: _load_following_user_counts(
                 app_user_id=app_user_id,
@@ -440,7 +440,7 @@ def _load_following_user_counts_bulk(
         profile = getattr(_THREAD_LOCAL_PROFILE, "profile", None)
         profile_owner = getattr(_THREAD_LOCAL_PROFILE, "profile_owner", None)
         if profile is None or profile_owner != reference_profile_id:
-            profile = _build_profile(app_user_id)
+            profile = _build_profile(app_user_id, reference_profile_id)
             _THREAD_LOCAL_PROFILE.profile = profile
             _THREAD_LOCAL_PROFILE.profile_owner = reference_profile_id
         return (

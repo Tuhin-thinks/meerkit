@@ -114,9 +114,6 @@ def parse_curl(curl_text: str) -> dict:
     }
 
 
-
-
-
 def _row_to_dict(row) -> dict | None:
     if row is None:
         return None
@@ -132,6 +129,7 @@ def _row_to_dict(row) -> dict | None:
 
 def store_pattern(
     app_user_id: str,
+    reference_profile_id: str,
     internal_name: str,
     display_name: str,
     curl_command: str,
@@ -149,38 +147,42 @@ def store_pattern(
         cursor = conn.cursor()
         cursor.execute(
             """INSERT OR REPLACE INTO api_curl_patterns
-               (app_user_id, internal_name, display_name, curl_command, url, http_method,
+               (app_user_id, reference_profile_id, internal_name, display_name,
+                curl_command, url, http_method,
                 selected_cookies, selected_headers, selected_data, selected_variables,
                 generated_script, updated_at, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(
                    (SELECT created_at FROM api_curl_patterns
-                    WHERE app_user_id = ? AND internal_name = ?), ?
+                    WHERE app_user_id = ? AND reference_profile_id = ? AND internal_name = ?), ?
                ))""",
             (
-                app_user_id, internal_name, display_name, curl_command, url, http_method,
+                app_user_id, reference_profile_id, internal_name, display_name,
+                curl_command, url, http_method,
                 json.dumps(selected_cookies), json.dumps(selected_headers),
                 json.dumps(selected_data), json.dumps(selected_variables),
                 generated_script, now,
-                app_user_id, internal_name, now,
+                app_user_id, reference_profile_id, internal_name, now,
             ),
         )
         conn.commit()
         cursor.execute(
-            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? AND internal_name = ?",
-            (app_user_id, internal_name),
+            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? AND reference_profile_id = ? AND internal_name = ?",
+            (app_user_id, reference_profile_id, internal_name),
         )
         row = _row_to_dict(cursor.fetchone())
         assert row is not None
         return row
 
 
-def get_pattern(app_user_id: str, internal_name: str) -> dict | None:
+def get_pattern(
+    app_user_id: str, reference_profile_id: str, internal_name: str,
+) -> dict | None:
     db_handler = get_worker_db()
     with db_handler as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? AND internal_name = ?",
-            (app_user_id, internal_name),
+            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? AND reference_profile_id = ? AND internal_name = ?",
+            (app_user_id, reference_profile_id, internal_name),
         )
         return _row_to_dict(cursor.fetchone())
 
@@ -192,18 +194,22 @@ _SESSION_COOKIE_MAP = {
 }
 
 
-def extract_session_from_curl_pattern(app_user_id: str, internal_name: str = "fetch_user_profile_data") -> dict:
+def extract_session_from_curl_pattern(
+    app_user_id: str,
+    reference_profile_id: str,
+    internal_name: str = "fetch_user_profile_data",
+) -> dict:
     """Extract session values (csrftoken, sessionid, ds_user_id) from a stored curl pattern.
 
     Parses the stored curl command and extracts cookies/headers that map to session fields.
     Falls back to other patterns if the requested one doesn't exist.
     """
-    pattern = get_pattern(app_user_id, internal_name)
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
     if not pattern:
         alternatives = ["follow_user", "unfollow_user", "fetch_followers_list", "fetch_following_list"]
         for alt in alternatives:
             if alt != internal_name:
-                pattern = get_pattern(app_user_id, alt)
+                pattern = get_pattern(app_user_id, reference_profile_id, alt)
                 if pattern:
                     break
     if not pattern:
@@ -226,19 +232,21 @@ def extract_session_from_curl_pattern(app_user_id: str, internal_name: str = "fe
     return session_values
 
 
-def list_patterns(app_user_id: str) -> list[dict]:
+def list_patterns(app_user_id: str, reference_profile_id: str) -> list[dict]:
     db_handler = get_worker_db()
     with db_handler as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? ORDER BY internal_name",
-            (app_user_id,),
+            "SELECT * FROM api_curl_patterns WHERE app_user_id = ? AND reference_profile_id = ? ORDER BY internal_name",
+            (app_user_id, reference_profile_id),
         )
         return [r for r in (_row_to_dict(r) for r in cursor.fetchall()) if r is not None]
 
 
-def update_pattern(app_user_id: str, internal_name: str, **updates) -> dict | None:
-    existing = get_pattern(app_user_id, internal_name)
+def update_pattern(
+    app_user_id: str, reference_profile_id: str, internal_name: str, **updates,
+) -> dict | None:
+    existing = get_pattern(app_user_id, reference_profile_id, internal_name)
     if not existing:
         return None
 
@@ -259,21 +267,21 @@ def update_pattern(app_user_id: str, internal_name: str, **updates) -> dict | No
     with db_handler as conn:
         cursor = conn.cursor()
         cursor.execute(
-            f"UPDATE api_curl_patterns SET {set_clause} WHERE app_user_id = ? AND internal_name = ?",
-            (*values, app_user_id, internal_name),
+            f"UPDATE api_curl_patterns SET {set_clause} WHERE app_user_id = ? AND reference_profile_id = ? AND internal_name = ?",
+            (*values, app_user_id, reference_profile_id, internal_name),
         )
         conn.commit()
 
-    return get_pattern(app_user_id, internal_name)
+    return get_pattern(app_user_id, reference_profile_id, internal_name)
 
 
-def delete_pattern(app_user_id: str, internal_name: str) -> bool:
+def delete_pattern(app_user_id: str, reference_profile_id: str, internal_name: str) -> bool:
     db_handler = get_worker_db()
     with db_handler as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "DELETE FROM api_curl_patterns WHERE app_user_id = ? AND internal_name = ?",
-            (app_user_id, internal_name),
+            "DELETE FROM api_curl_patterns WHERE app_user_id = ? AND reference_profile_id = ? AND internal_name = ?",
+            (app_user_id, reference_profile_id, internal_name),
         )
         conn.commit()
         return cursor.rowcount > 0
@@ -281,12 +289,13 @@ def delete_pattern(app_user_id: str, internal_name: str) -> bool:
 
 def build_request(
     app_user_id: str,
+    reference_profile_id: str,
     internal_name: str,
     session_values: dict,
     runtime_values: dict | None = None,
 ) -> tuple[str, dict, dict, str | None]:
     runtime_values = runtime_values or {}
-    pattern = get_pattern(app_user_id, internal_name)
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
     if not pattern:
         raise MissingCurlPatternError(
             internal_name=internal_name,
@@ -300,17 +309,14 @@ def build_request(
 
     url = resolve_value(str(pattern["url"]), session_values, runtime_values)
 
-    # Replace hardcoded user ID in URL path with target_user_id if provided
     target_user_id = runtime_values.get("target_user_id")
     if target_user_id:
-        # Match /friendships/{numeric_id}/ pattern in URL path
         url = re.sub(
             r"(/friendships/)(\d+)(/)",
             rf"\g<1>{target_user_id}\3",
             url,
         )
 
-    # Append max_id to URL if present in runtime_values and not already in URL
     max_id = runtime_values.get("max_id")
     if max_id is not None and "max_id" not in url:
         separator = "&" if "?" in url else "?"
@@ -361,14 +367,15 @@ def build_request(
 
 def test_pattern(
     app_user_id: str,
+    reference_profile_id: str,
     internal_name: str,
     session_values: dict,
     runtime_values: dict | None = None,
 ) -> dict:
     url, headers, cookies, data_string = build_request(
-        app_user_id, internal_name, session_values, runtime_values,
+        app_user_id, reference_profile_id, internal_name, session_values, runtime_values,
     )
-    pattern = get_pattern(app_user_id, internal_name)
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
     http_method = (pattern or {}).get("http_method", "POST")
 
     start = datetime.now()

@@ -242,7 +242,7 @@ def test_request_followback_prediction_reuses_cached_metadata(monkeypatch):
     monkeypatch.setattr(
         account_handler,
         "_build_profile",
-        lambda credentials: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         account_handler.ii,
@@ -350,7 +350,7 @@ def test_request_followback_prediction_reuses_active_task(monkeypatch):
     monkeypatch.setattr(
         account_handler,
         "_build_profile",
-        lambda credentials: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         account_handler.ii,

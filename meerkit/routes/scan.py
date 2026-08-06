@@ -23,7 +23,7 @@ def trigger_scan():
     instagram_user = cast(dict, context)
 
     try:
-        session_vals = extract_session_from_curl_pattern(app_user_id)
+        session_vals = extract_session_from_curl_pattern(app_user_id, instagram_user["instagram_user_id"])
     except Exception:
         return jsonify({"error": "No API patterns configured. Please set up at least one curl pattern first."}), 400
 

@@ -128,11 +128,12 @@ class InstagramGateway:
         self,
         *,
         app_user_id: str,
+        reference_profile_id: str,
         internal_name: str,
         profile: ii.InstagramProfile,
         runtime_values: dict | None = None,
     ) -> dict:
-        pattern = get_pattern(app_user_id, internal_name)
+        pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
         if not pattern:
             raise MissingCurlPatternError(
                 internal_name=internal_name,
@@ -142,6 +143,7 @@ class InstagramGateway:
         session_vals = self._get_session_values(profile)
         url, headers, cookies, data_string = build_request(
             app_user_id=app_user_id,
+            reference_profile_id=reference_profile_id,
             internal_name=internal_name,
             session_values=session_vals,
             runtime_values=runtime_values or {},
@@ -189,6 +191,7 @@ class InstagramGateway:
         self,
         *,
         app_user_id: str,
+        reference_profile_id: str,
         internal_name: str,
         profile: ii.InstagramProfile,
         runtime_values: dict | None = None,
@@ -213,6 +216,7 @@ class InstagramGateway:
         for _ in range(max_pages):
             raw = self._pattern_call(
                 app_user_id=app_user_id,
+                reference_profile_id=reference_profile_id,
                 internal_name=internal_name,
                 profile=profile,
                 runtime_values=current_runtime,
@@ -391,6 +395,7 @@ class InstagramGateway:
         def _execute() -> dict[str, object]:
             raw = self._pattern_call(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_user_profile_data",
                 profile=profile,
             )
@@ -428,6 +433,7 @@ class InstagramGateway:
         def _execute() -> dict[str, object]:
             raw = self._pattern_call(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_user_profile_data",
                 profile=profile,
                 runtime_values={"target_user_id": target_user_id},
@@ -476,6 +482,7 @@ class InstagramGateway:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_followers_list",
                 profile=profile,
                 runtime_values={
@@ -517,6 +524,7 @@ class InstagramGateway:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_following_list",
                 profile=profile,
                 runtime_values={
@@ -558,6 +566,7 @@ class InstagramGateway:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_followers_list",
                 profile=profile,
                 runtime_values={
@@ -598,6 +607,7 @@ class InstagramGateway:
         def _execute() -> list[ii.FollowerUserRecord]:
             raw = self._pattern_call_paginated(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="fetch_following_list",
                 profile=profile,
                 runtime_values={
@@ -639,6 +649,7 @@ class InstagramGateway:
         def _execute() -> int:
             raw = self._pattern_call(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="follow_user",
                 profile=profile,
                 runtime_values={
@@ -673,6 +684,7 @@ class InstagramGateway:
         def _execute() -> int:
             raw = self._pattern_call(
                 app_user_id=app_user_id,
+                reference_profile_id=instagram_user_id,
                 internal_name="unfollow_user",
                 profile=profile,
                 runtime_values={

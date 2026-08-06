@@ -110,7 +110,7 @@ def test_prepare_batch_unfollow_excludes_when_alt_follow_detected_from_metadata(
     monkeypatch.setattr(
         automation_service,
         "_get_cached_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         automation_service.instagram_gateway,
@@ -157,7 +157,7 @@ def test_prepare_batch_unfollow_fallbacks_when_metadata_fetch_fails(monkeypatch)
     monkeypatch.setattr(
         automation_service,
         "_get_cached_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
 
     def _raise_fetch_error(**kwargs):
@@ -200,7 +200,7 @@ def test_prepare_batch_unfollow_excludes_direct_follower_when_skip_mutual(monkey
     monkeypatch.setattr(
         automation_service,
         "_get_cached_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         automation_service.instagram_gateway,
@@ -280,7 +280,7 @@ def test_prepare_batch_unfollow_prefers_deactivated_exclusion_over_mutual(monkey
     monkeypatch.setattr(
         automation_service,
         "_get_cached_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         automation_service.instagram_gateway,

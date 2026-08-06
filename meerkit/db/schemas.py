@@ -361,6 +361,7 @@ API_CURL_PATTERNS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS api_curl_patterns (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     app_user_id        TEXT NOT NULL,
+    reference_profile_id TEXT NOT NULL,
     internal_name      TEXT NOT NULL,
     display_name       TEXT NOT NULL,
     curl_command       TEXT NOT NULL,
@@ -374,12 +375,12 @@ CREATE TABLE IF NOT EXISTS api_curl_patterns (
     is_active          INTEGER DEFAULT 1,
     created_at         TEXT DEFAULT (datetime('now')),
     updated_at         TEXT DEFAULT (datetime('now')),
-    UNIQUE(app_user_id, internal_name)
+    UNIQUE(app_user_id, reference_profile_id, internal_name)
 );"""
 
 API_CURL_PATTERNS_INTERNAL_NAME_INDEX = """
 CREATE INDEX IF NOT EXISTS idx_api_curl_patterns_internal_name
-ON api_curl_patterns (app_user_id, internal_name);
+ON api_curl_patterns (app_user_id, reference_profile_id, internal_name);
 """
 
 USER_PREFERENCES_SCHEMA = """

@@ -35,7 +35,7 @@ def test_following_users_prefers_metadata_follows_you(monkeypatch):
 
     monkeypatch.setattr(
         "meerkit.routes.automation._build_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         "meerkit.routes.automation.instagram_gateway.get_current_following_v2",
@@ -77,7 +77,7 @@ def test_following_users_falls_back_to_membership_when_metadata_missing(monkeypa
 
     monkeypatch.setattr(
         "meerkit.routes.automation._build_profile",
-        lambda instagram_user: object(),
+        lambda app_user_id, reference_profile_id: object(),
     )
     monkeypatch.setattr(
         "meerkit.routes.automation.instagram_gateway.get_current_following_v2",

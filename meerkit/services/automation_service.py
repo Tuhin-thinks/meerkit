@@ -218,7 +218,7 @@ def _resolve_identity_to_user_id(
 ) -> str | None:
     if not normalized_username:
         return None
-    profile = _get_cached_profile(app_user_id)
+    profile = _get_cached_profile(app_user_id, reference_profile_id)
     return instagram_gateway.resolve_target_user_pk_for_automation(
         app_user_id=app_user_id,
         instagram_user_id=reference_profile_id,
@@ -311,7 +311,7 @@ def _prefetch_followed_by_flags(
     max_workers = max(1, min(4, configured_max_workers, len(unique_target_user_ids)))
 
     def _fetch_one(target_user_id: str) -> tuple[str, bool | None]:
-        profile = _get_cached_profile(app_user_id)
+        profile = _get_cached_profile(app_user_id, reference_profile_id)
         try:
             summary = instagram_gateway.get_target_user_data(
                 app_user_id=app_user_id,
@@ -1153,7 +1153,7 @@ def _resolve_item_user_id(
     if not username:
         return None
 
-    profile = _get_cached_profile(app_user_id)
+    profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
     resolved = instagram_gateway.resolve_target_user_pk_for_automation(
         app_user_id=app_user_id,
         instagram_user_id=instagram_user["instagram_user_id"],
@@ -1194,7 +1194,7 @@ def execute_follow_item(
         or item.get("display_username")
         or target_user_id
     )
-    profile = _get_cached_profile(app_user_id)
+    profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
 
     result_code = instagram_gateway.follow_user_by_id(
         app_user_id=app_user_id,
@@ -1250,7 +1250,7 @@ def execute_unfollow_item(
         or item.get("display_username")
         or target_user_id
     )
-    profile = _get_cached_profile(app_user_id)
+    profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
 
     result_code = instagram_gateway.unfollow_user_by_id(
         app_user_id=app_user_id,
@@ -1390,7 +1390,7 @@ def _check_right_follows_current_user(
     Uses a single metadata fetch (friendship_status.followed_by) per target instead
     of enumerating all followers. Returns False on any API failure.
     """
-    profile = _get_cached_profile(app_user_id)
+    profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
     try:
         summary = instagram_gateway.get_target_user_data(
             app_user_id=app_user_id,
@@ -1564,7 +1564,7 @@ def execute_left_right_compare_item(
         )
         left_followers_count: int | None = None
     else:
-        profile = _get_cached_profile(app_user_id)
+        profile = _get_cached_profile(app_user_id, instagram_user["instagram_user_id"])
         try:
             left_followers = instagram_gateway.get_target_followers_v2(
                 app_user_id=app_user_id,
@@ -1627,7 +1627,7 @@ def inter_action_delay() -> None:
     time.sleep(delay)
 
 
-def _get_cached_profile(app_user_id: str) -> ii.InstagramProfile:
+def _get_cached_profile(app_user_id: str, reference_profile_id: str) -> ii.InstagramProfile:
     profile_cache = getattr(_THREAD_LOCAL, "profile_cache", None)
     if not isinstance(profile_cache, dict):
         profile_cache = {}
@@ -1637,6 +1637,6 @@ def _get_cached_profile(app_user_id: str) -> ii.InstagramProfile:
     if cached_profile is not None:
         return cached_profile
 
-    profile = _build_profile(app_user_id)
+    profile = _build_profile(app_user_id, reference_profile_id)
     profile_cache[app_user_id] = profile
     return profile

@@ -36,7 +36,7 @@ _INTERNAL_NAMES = frozenset({
 })
 
 
-def _get_app_and_ig_user() -> tuple[str, dict]:
+def _get_app_and_ig_user() -> tuple[str, str, dict]:
     instagram_user_id = request.args.get("profile_id") or request.args.get(
         "instagram_user_id"
     )
@@ -44,7 +44,9 @@ def _get_app_and_ig_user() -> tuple[str, dict]:
     if not app_user_id:
         body, status = context
         raise _api_error(body["error"], status, body["code"])
-    return app_user_id, cast(dict, context)
+    if not instagram_user_id:
+        raise _api_error("profile_id is required", 400, "validation_error")
+    return app_user_id, instagram_user_id, cast(dict, context)
 
 
 class _ApiError(Exception):
@@ -80,7 +82,7 @@ def handle_parse():
 def handle_store(internal_name: str):
     if internal_name not in _INTERNAL_NAMES:
         return jsonify({"error": f"Unknown internal name: {internal_name}", "code": "validation_error"}), 400
-    app_user_id, _ = _get_app_and_ig_user()
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
     body = request.get_json(silent=True) or {}
     required = ("display_name", "curl_command", "url", "http_method")
     missing = [k for k in required if k not in body]
@@ -89,6 +91,7 @@ def handle_store(internal_name: str):
 
     pattern = store_pattern(
         app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
         internal_name=internal_name,
         display_name=body["display_name"],
         curl_command=body["curl_command"],
@@ -105,8 +108,8 @@ def handle_store(internal_name: str):
 
 @bp.get("/<internal_name>")
 def handle_get(internal_name: str):
-    app_user_id, _ = _get_app_and_ig_user()
-    pattern = get_pattern(app_user_id, internal_name)
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
     if not pattern:
         return jsonify(None), 200
     return jsonify(pattern), 200
@@ -114,14 +117,14 @@ def handle_get(internal_name: str):
 
 @bp.get("")
 def handle_list():
-    app_user_id, _ = _get_app_and_ig_user()
-    patterns = list_patterns(app_user_id)
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
+    patterns = list_patterns(app_user_id, reference_profile_id)
     return jsonify(patterns), 200
 
 
 @bp.patch("/<internal_name>")
 def handle_update(internal_name: str):
-    app_user_id, _ = _get_app_and_ig_user()
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
     body = request.get_json(silent=True) or {}
     allowed = {
         "display_name", "curl_command", "url", "http_method",
@@ -131,7 +134,7 @@ def handle_update(internal_name: str):
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
         return jsonify({"error": "No valid fields to update", "code": "validation_error"}), 400
-    result = update_pattern(app_user_id, internal_name, **updates)
+    result = update_pattern(app_user_id, reference_profile_id, internal_name, **updates)
     if not result:
         return jsonify({"error": "Pattern not found", "code": "not_found"}), 404
     return jsonify(result), 200
@@ -139,19 +142,20 @@ def handle_update(internal_name: str):
 
 @bp.delete("/<internal_name>")
 def handle_delete(internal_name: str):
-    app_user_id, _ = _get_app_and_ig_user()
-    deleted = delete_pattern(app_user_id, internal_name)
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
+    deleted = delete_pattern(app_user_id, reference_profile_id, internal_name)
     return jsonify({"ok": deleted}), 200
 
 
 @bp.post("/<internal_name>/test")
 def handle_test(internal_name: str):
-    app_user_id, _ = _get_app_and_ig_user()
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
     runtime_values = request.get_json(silent=True) or {}
-    session_values = extract_session_from_curl_pattern(app_user_id, internal_name)
+    session_values = extract_session_from_curl_pattern(app_user_id, reference_profile_id, internal_name)
 
     result = test_pattern(
         app_user_id=app_user_id,
+        reference_profile_id=reference_profile_id,
         internal_name=internal_name,
         session_values=session_values,
         runtime_values=runtime_values,
@@ -161,12 +165,12 @@ def handle_test(internal_name: str):
 
 @bp.post("/<internal_name>/generate")
 def handle_generate(internal_name: str):
-    app_user_id, _ = _get_app_and_ig_user()
-    pattern = get_pattern(app_user_id, internal_name)
+    app_user_id, reference_profile_id, _ = _get_app_and_ig_user()
+    pattern = get_pattern(app_user_id, reference_profile_id, internal_name)
     if not pattern:
         return jsonify({"error": "Pattern not found", "code": "not_found"}), 404
 
-    session_values = extract_session_from_curl_pattern(app_user_id, internal_name)
+    session_values = extract_session_from_curl_pattern(app_user_id, reference_profile_id, internal_name)
 
     raw_url, raw_headers, raw_cookies, raw_data_str = _curl_parse(
         str(pattern["curl_command"])
@@ -211,7 +215,7 @@ def handle_generate(internal_name: str):
 
 @bp.get("/preferences/<key>")
 def handle_get_preference(key: str):
-    app_user_id, _ = _get_app_and_ig_user()
+    app_user_id, _, _ = _get_app_and_ig_user()
     logger.info("GET preference key=%s app_user_id=%s", key, app_user_id)
     value = get_preference(app_user_id, key)
     logger.info("GET preference result=%s", value)
@@ -222,7 +226,7 @@ def handle_get_preference(key: str):
 
 @bp.put("/preferences/<key>")
 def handle_set_preference(key: str):
-    app_user_id, _ = _get_app_and_ig_user()
+    app_user_id, _, _ = _get_app_and_ig_user()
     body = request.get_json(silent=True) or {}
     logger.info("SET preference key=%s app_user_id=%s body=%s", key, app_user_id, body)
     set_preference(app_user_id, key, body)

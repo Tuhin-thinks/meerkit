@@ -8,6 +8,7 @@ from meerkit.db import schemas
 _AUTOMATION_ACTIONS_HEARTBEAT_COLUMN = "last_heartbeat_at"
 _PREDICTIONS_SESSION_COLUMN = "prediction_session_id"
 _TARGET_PROFILES_DEACTIVATED_COLUMN = "is_deactivated"
+_CURL_PATTERNS_REFERENCE_PROFILE_ID_COLUMN = "reference_profile_id"
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +33,7 @@ class SqliteDBHandler:
             self._ensure_automation_action_columns(cursor)
             self._ensure_prediction_columns(cursor)
             self._ensure_target_profile_columns(cursor)
+            self._migrate_curl_patterns_add_reference_profile_id(cursor)
             conn.commit()
 
     def _ensure_automation_action_columns(self, cursor: sqlite3.Cursor) -> None:
@@ -63,6 +65,17 @@ class SqliteDBHandler:
             cursor.execute(
                 "ALTER TABLE target_profiles ADD COLUMN is_deactivated INTEGER"
             )
+
+    def _migrate_curl_patterns_add_reference_profile_id(
+        self, cursor: sqlite3.Cursor
+    ) -> None:
+        cursor.execute("PRAGMA table_info(api_curl_patterns)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        if _CURL_PATTERNS_REFERENCE_PROFILE_ID_COLUMN not in existing_columns:
+            cursor.execute("DROP TABLE IF EXISTS api_curl_patterns")
+            cursor.execute("DROP INDEX IF EXISTS idx_api_curl_patterns_internal_name")
+            cursor.execute(schemas.API_CURL_PATTERNS_SCHEMA)
+            cursor.execute(schemas.API_CURL_PATTERNS_INTERNAL_NAME_INDEX)
 
     def __enter__(self):
         # Keep one connection per handler (and handler is thread-local in db_service).
